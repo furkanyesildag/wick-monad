@@ -1,9 +1,11 @@
 import "server-only";
 import { account, pub, wallet, ADDR, WAD, oracleAbi, poolAbi, wickAbi, erc20Abi } from "./contracts";
 import { getLiveMonUsd, getRealSeries } from "./pyth";
+import { getAiPolicy, aiEnabled, type AiPolicy } from "./ai";
 
-// Real MON/USD moves a few % over hours; amplify so the genuine path is watchable in minutes.
-const PRICE_AMPLIFY = 30;
+// Real MON/USD moves a few % over hours; amplify modestly so the genuine path is watchable
+// in minutes while staying realistic (calm most of the time, with occasional real spikes).
+const PRICE_AMPLIFY = 12;
 
 // ----------------------------------------------------------------------------
 // Singleton sim state (survives dev HMR via globalThis).
@@ -32,6 +34,8 @@ type Sim = {
   realSeries: number[]; // real MON/USD closes from Pyth, replayed as the price path
   realIdx: number;
   liveMonUsd: number; // latest real MON/USD spot (for the ticker)
+  aiPolicy: AiPolicy | null; // latest spread/regime decision from the AI
+  aiBusy: boolean;
 };
 
 const g = globalThis as unknown as { __wickSim?: Sim };
@@ -40,7 +44,7 @@ export const sim: Sim =
   (g.__wickSim = {
     tick: 0, shockQueued: false, approvalsDone: false, busy: false, trades: 0,
     history: [], log: [], txs: [], lpActive: false, lpShares: 0n, lpCost: 0, lpDepositTick: 0, lpJoinWickLvr: 0, lpHistory: [],
-    realSeries: [], realIdx: 0, liveMonUsd: 0,
+    realSeries: [], realIdx: 0, liveMonUsd: 0, aiPolicy: null, aiBusy: false,
   });
 // Backfill fields if an older-shaped singleton persisted across an HMR reload.
 sim.log ??= [];
@@ -55,6 +59,8 @@ sim.lpHistory ??= [];
 sim.realSeries ??= [];
 sim.realIdx ??= 0;
 sim.liveMonUsd ??= 0;
+sim.aiPolicy ??= null;
+sim.aiBusy ??= false;
 
 const toNum = (x: bigint, dec = 18) => Number(x) / 10 ** dec;
 const fmtUsd = (n: number) => `$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
@@ -179,7 +185,6 @@ export async function runTick() {
     const diff = newPrice > prev ? newPrice - prev : prev - newPrice;
     const volBps = prev === 0n ? 0n : (diff * 10_000n) / prev;
     const pct = (Number(newPrice) - Number(prev)) / Number(prev) * 100;
-    const spreadPct = (5 + Number(volBps) / 2) / 100; // base 0.05% + vol/2, in %
 
     const prevP = sim.history.at(-1)?.passiveLvr ?? 0;
     const prevW = sim.history.at(-1)?.wickLvr ?? 0;
@@ -188,8 +193,26 @@ export async function runTick() {
     note(blk, shocked ? "SHOCK" : "ORACLE", `${shocked ? "+5% jump — " : ""}fair price ${fmtUsd(toNum(newPrice))} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`, shocked ? "loss" : "info");
     bag.push(await submit(blk, "push oracle", { address: ADDR.oracle, abi: oracleAbi, functionName: "pushPrice", args: [newPrice], account, chain: undefined }));
 
-    note(blk, "REPRICE", `WICK pegged to fair · spread ${Math.min(spreadPct, 5).toFixed(2)}% (vol ${(Number(volBps) / 100).toFixed(2)}%)`, "info");
-    bag.push(await submit(blk, "reprice WICK", { address: ADDR.wick, abi: wickAbi, functionName: "reprice", args: [newPrice, volBps], account, chain: undefined }));
+    // Fire the AI brain (async — keeps ticks fast) to set the spread policy for upcoming blocks.
+    // A shock always asks the AI (even if a periodic call is in flight) so it reacts on-camera.
+    if (aiEnabled() && (shocked || blk % 4 === 0) && (shocked || !sim.aiBusy)) {
+      sim.aiBusy = true;
+      const h = sim.history;
+      const rr: number[] = [];
+      for (let i = Math.max(1, h.length - 5); i < h.length; i++) rr.push((h[i].price / h[i - 1].price - 1) * 100);
+      rr.push(pct);
+      getAiPolicy({ priceChangePct: pct, recentReturnsPct: rr, volPct: Number(volBps) / 100, shock: shocked })
+        .then((p) => { if (p) { sim.aiPolicy = p; note(sim.tick, "AI", p.reasoning, p.regime === "calm" ? "win" : "loss"); } })
+        .finally(() => { sim.aiBusy = false; });
+    }
+
+    // Spread comes from the AI policy (fallback: volatility-scaled). Convert to the contract's
+    // vol arg so the on-chain half-spread equals the AI's target: spread = baseFee(5) + vol/2.
+    const aiSpreadBps = sim.aiPolicy ? sim.aiPolicy.spreadBps : Math.min(5 + Number(volBps) / 2, 500);
+    const volForContract = BigInt(Math.max(0, Math.round(2 * (aiSpreadBps - 5))));
+    const regimeTxt = sim.aiPolicy ? ` · AI: ${sim.aiPolicy.regime}` : "";
+    note(blk, "REPRICE", `WICK pegged to fair · spread ${(aiSpreadBps / 100).toFixed(2)}%${regimeTxt}`, "info");
+    bag.push(await submit(blk, "reprice WICK", { address: ADDR.wick, abi: wickAbi, functionName: "reprice", args: [newPrice, volForContract], account, chain: undefined }));
 
     if (newPrice !== prev) await arbPassive(bag, blk, newPrice);
     await retail(bag, blk, sim.tick, newPrice);
@@ -228,53 +251,65 @@ export async function runTick() {
   }
 }
 
+type OnChain = {
+  oraclePrice: number;
+  passive: { price: number; spreadBps: number; lpMarkout: number; lpEquity: number };
+  wick: { price: number; spreadBps: number; lpMarkout: number; lpEquity: number };
+  yourLp: null | { value: number; cost: number; earned: number; returnPct: number; sinceBlock: number; history: LpPoint[] };
+  passivePnl: number;
+  wickPnl: number;
+};
+let lastOnChain: OnChain | null = null;
+
 export async function readState() {
-  const [op, pRes, pLvr, pEq, wPeg, wSpread, wLvr, wEq, wTotal, wShares] = await Promise.all([
-    pub.readContract({ address: ADDR.oracle, abi: oracleAbi, functionName: "price" }) as Promise<bigint>,
-    pub.readContract({ address: ADDR.passive, abi: poolAbi, functionName: "quotedPrice" }) as Promise<readonly [bigint, bigint]>,
-    pub.readContract({ address: ADDR.passive, abi: poolAbi, functionName: "lpMarkout" }) as Promise<bigint>,
-    pub.readContract({ address: ADDR.passive, abi: poolAbi, functionName: "lpEquityQuote" }) as Promise<bigint>,
-    pub.readContract({ address: ADDR.wick, abi: wickAbi, functionName: "pegPrice" }) as Promise<bigint>,
-    pub.readContract({ address: ADDR.wick, abi: wickAbi, functionName: "dynamicFeeBps" }) as Promise<bigint>,
-    pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "lpMarkout" }) as Promise<bigint>,
-    pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "lpEquityQuote" }) as Promise<bigint>,
-    pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "totalShares" }) as Promise<bigint>,
-    pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "shares", args: [account.address] }) as Promise<bigint>,
-  ]);
-
-  const wickEquity = toNum(wEq);
-  let yourLp = null as null | { value: number; cost: number; earned: number; returnPct: number; sinceBlock: number; history: LpPoint[] };
-  if (sim.lpActive && sim.lpShares > 0n && wTotal > 0n) {
-    const frac = Number(sim.lpShares) / Number(wTotal);
-    const value = frac * wickEquity;
-    const earned = frac * (sim.lpJoinWickLvr - toNum(wLvr)); // share of pool spread since join
-    yourLp = {
-      value, cost: sim.lpCost, earned,
-      returnPct: sim.lpCost > 0 ? (earned / sim.lpCost) * 100 : 0,
-      sinceBlock: sim.lpDepositTick,
-      history: sim.lpHistory,
+  let oc: OnChain;
+  try {
+    const [op, pRes, pLvr, pEq, wPeg, wSpread, wLvr, wEq, wTotal] = await Promise.all([
+      pub.readContract({ address: ADDR.oracle, abi: oracleAbi, functionName: "price" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.passive, abi: poolAbi, functionName: "quotedPrice" }) as Promise<readonly [bigint, bigint]>,
+      pub.readContract({ address: ADDR.passive, abi: poolAbi, functionName: "lpMarkout" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.passive, abi: poolAbi, functionName: "lpEquityQuote" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.wick, abi: wickAbi, functionName: "pegPrice" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.wick, abi: wickAbi, functionName: "dynamicFeeBps" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "lpMarkout" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "lpEquityQuote" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "totalShares" }) as Promise<bigint>,
+    ]);
+    const wickEquity = toNum(wEq);
+    let yourLp: OnChain["yourLp"] = null;
+    if (sim.lpActive && sim.lpShares > 0n && wTotal > 0n) {
+      const frac = Number(sim.lpShares) / Number(wTotal);
+      const value = frac * wickEquity;
+      const earned = frac * (sim.lpJoinWickLvr - toNum(wLvr));
+      yourLp = { value, cost: sim.lpCost, earned, returnPct: sim.lpCost > 0 ? (earned / sim.lpCost) * 100 : 0, sinceBlock: sim.lpDepositTick, history: sim.lpHistory };
+    }
+    oc = {
+      oraclePrice: toNum(op),
+      passive: { price: toNum(pRes[0]), spreadBps: Number(pRes[1]), lpMarkout: toNum(pLvr), lpEquity: toNum(pEq) },
+      wick: { price: toNum(wPeg), spreadBps: Number(wSpread), lpMarkout: toNum(wLvr), lpEquity: wickEquity },
+      yourLp,
+      passivePnl: -toNum(pLvr),
+      wickPnl: -toNum(wLvr),
     };
+    lastOnChain = oc;
+  } catch (e) {
+    // RPC blip — serve the last good on-chain snapshot so the dashboard never blanks.
+    if (!lastOnChain) throw e;
+    oc = lastOnChain;
   }
-  void wShares;
 
-  const passivePnl = -toNum(pLvr);
-  const wickPnl = -toNum(wLvr);
   return {
     tick: sim.tick,
-    oraclePrice: toNum(op),
     monUsd: sim.liveMonUsd,
-    passive: { price: toNum(pRes[0]), spreadBps: Number(pRes[1]), lpMarkout: toNum(pLvr), lpEquity: toNum(pEq) },
-    wick: { price: toNum(wPeg), spreadBps: Number(wSpread), lpMarkout: toNum(wLvr), lpEquity: wickEquity },
+    ai: sim.aiPolicy,
+    oraclePrice: oc.oraclePrice,
+    passive: oc.passive,
+    wick: oc.wick,
     history: sim.history,
     log: sim.log,
     txs: sim.txs,
-    yourLp,
-    stats: {
-      blocks: sim.tick,
-      trades: sim.trades,
-      wickLpProfit: wickPnl,
-      savedVsPassive: wickPnl - passivePnl,
-    },
+    yourLp: oc.yourLp,
+    stats: { blocks: sim.tick, trades: sim.trades, wickLpProfit: oc.wickPnl, savedVsPassive: oc.wickPnl - oc.passivePnl },
   };
 }
 
