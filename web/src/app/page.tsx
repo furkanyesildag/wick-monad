@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 
 type PoolState = { price: number; spreadBps: number; lpMarkout: number; lpEquity: number };
 type Hist = { tick: number; price: number; passiveLvr: number; wickLvr: number };
@@ -171,7 +172,10 @@ function TopBar({ monUsd, tick, tps, onMonad, contractHref }: { monUsd: number; 
         <div className="flex items-center gap-2.5">
           <Mark />
           <span className="text-[15px] font-bold tracking-tight">WICK</span>
-          <span className="hidden text-[11.5px] text-muted sm:inline">AI market maker</span>
+          <nav className="ml-2 hidden items-center gap-3 text-[12.5px] text-muted sm:flex">
+            <span className="text-foreground">Dashboard</span>
+            <Link href="/app" className="hover:text-foreground">Earn ↗</Link>
+          </nav>
         </div>
         <div className="ml-auto flex items-center gap-0 text-[12px]">
           <span className="hidden items-baseline gap-1.5 px-3 md:flex">

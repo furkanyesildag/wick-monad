@@ -16,6 +16,7 @@ type Deployment = {
   usdc: `0x${string}`;
   passive: `0x${string}`;
   wick: `0x${string}`;
+  vault?: `0x${string}`;
   startPrice: string;
 };
 
@@ -47,6 +48,7 @@ export const ADDR = {
   usdc: deployment.usdc,
   passive: deployment.passive,
   wick: deployment.wick,
+  vault: deployment.vault,
 };
 
 export const WAD = 10n ** 18n;
