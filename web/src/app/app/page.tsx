@@ -70,7 +70,7 @@ export default function AppPage() {
     } catch { setBusyMsg(null); }
   }
   async function aiEarn() {
-    setBusyMsg("AI market-making your MON…");
+    setBusyMsg("OpenClaw agent 🦀 market-making your MON…");
     await fetch("/api/app/earn", { method: "POST" });
     setTimeout(refresh, 800); setTimeout(() => setBusyMsg(null), 1600);
   }
@@ -85,7 +85,7 @@ export default function AppPage() {
       <main className="mx-auto w-full max-w-[760px] px-5 py-8">
         <div className="mb-5">
           <h1 className="text-[22px] font-bold tracking-tight">Earn with the WICK MON Vault</h1>
-          <p className="mt-1 text-[13px] text-muted">Deposit testnet MON. The AI market maker works your liquidity every block and streams the spread it earns back to you. Single-sided · just MON. Withdraw anytime.</p>
+          <p className="mt-1 text-[13px] text-muted">Deposit testnet MON. An OpenClaw agent 🦀 market-makes your liquidity every block and streams the spread it earns back to you. Single-sided · just MON. Withdraw anytime.</p>
         </div>
 
         {!isConnected ? (
@@ -117,7 +117,7 @@ export default function AppPage() {
                 <Stat k="vault shares" v={fmt(shares, 2)} />
               </div>
               <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
-                <button onClick={aiEarn} disabled={busy || !assets || assets === 0n} className="btn px-3.5 py-2 text-[12.5px]" style={{ borderColor: "var(--accent)", color: "var(--accent-2)" }}>▶ Let the AI market-make (1 day)</button>
+                <button onClick={aiEarn} disabled={busy || !assets || assets === 0n} className="btn px-3.5 py-2 text-[12.5px]" style={{ borderColor: "var(--accent)", color: "var(--accent-2)" }}>🦀 Let the OpenClaw agent work (1 day)</button>
                 <button onClick={withdraw} disabled={busy || !shares || shares === 0n} className="btn px-3.5 py-2 text-[12.5px]">Withdraw all</button>
                 <span className="ml-auto text-[11.5px] text-muted">earnings stream in as price-per-share rises</span>
               </div>

@@ -14,7 +14,7 @@ const COPY = {
     sub: "On Uniswap, bots catch the real price before the pool updates and skim your liquidity. LPs have lost $230M+ to it. WICK puts an AI market maker in charge: it reprices every block on Monad, kills the leak, and pays you the spread instead.",
     ctaLive: "See it live →",
     ctaApp: "Deposit MON →",
-    heroFoot: "real Pyth price · real OpenAI · real on-chain",
+    heroFoot: "real Pyth price · real OpenClaw 🦀 · real on-chain",
     stats: [
       { k: "LP losses to LVR", v: "$230M+", n: "the leak WICK closes" },
       { k: "block time", v: "400ms", n: "sub-second finality" },
@@ -24,33 +24,33 @@ const COPY = {
     ideaLabel: "the idea",
     ideaTitle: "Professional market-making, opened to everyone.",
     ideaBody: [
-      "Passive AMMs leak value every time the price moves: arbitrage bots pocket the gap between the stale pool price and the real market. That leak is LVR, the biggest unsolved problem in AMM design.",
+      "Passive AMMs leak value every time the price moves: arbitrage bots pocket the gap between the stale pool price and the real market. That leak is LVR (Loss-Versus-Rebalancing), the biggest unsolved problem in AMM design.",
       "The fix already exists: proprietary AMMs (propAMMs) that actively requote, like the closed, single-firm pools behind 35-40% of Solana's volume. But they are walled gardens run by quant desks. WICK opens that game to everyone: an AI does the market-making, the logic runs inside the swap as a Uniswap v4 hook, and it lives on the one chain fast enough to do it every block.",
     ],
     howLabel: "how it works",
     howSub: "Deposit, and an AI runs your money like a professional market maker, the game that today only Wintermute-style firms get to play.",
     how: [
       { t: "You deposit", d: "Put MON into the WICK vault from your own wallet. Single-sided, no pairing, no USDC needed." },
-      { t: "The AI market-makes it", d: "An OpenAI model reads the live Pyth price every block, sets the spread, and reprices so bots cannot skim you." },
+      { t: "The AI market-makes it", d: "An OpenClaw agent 🦀 reads the live MON/USD price from Pyth every block, sets the spread, and reprices so bots cannot skim you." },
       { t: "You earn the spread", d: "The market-making spread streams back to you, the revenue propAMMs use to capture 35-40% of Solana volume." },
     ],
     pillarsLabel: "what makes it work",
     pillars: [
-      { t: "An AI, not a quant desk", d: "An OpenAI model reads the live price every block and sets the spread and regime: wider to protect LPs in volatility, tighter to win flow when calm. Its reasoning is on screen." },
+      { t: "An AI, not a quant desk", d: "An OpenClaw agent 🦀 reads the live price every block and sets the spread and regime: wider to protect LPs in volatility, tighter to win flow when calm. Its reasoning is on screen." },
       { t: "Logic at the point of exchange", d: "WICK is built as a Uniswap v4 hook: the repricing and dynamic fee run inside the swap itself, not bolted on top. Deployed and verified on Monad." },
       { t: "Paid in spread, not tokens", d: "Income is the market-making spread, the proven model propAMMs use to capture 35-40% of Solana spot volume. No token, no emissions, no farming." },
       { t: "Structurally lowest LVR", d: "LVR = staleness window × volatility. Monad's 400ms blocks give the shortest window on-chain, so WICK quotes tighter than any pool on a slower chain. Only on Monad." },
     ],
     whyLabel: "why only Monad",
     whyTitle: "LVR = staleness window × volatility.",
-    whyBody: "The shorter the gap between price updates, the less LPs leak. Monad's 400ms blocks give the shortest window achievable on-chain, and its parallel execution + 10,000 TPS let hundreds of pools reprice in the same block. Per-block, AI-driven market-making at scale simply is not possible anywhere else. It is the chain built for high-frequency finance, and WICK is what it is for.",
+    whyBody: "The shorter the gap between price updates, the less LPs leak. Monad's 400ms blocks give the shortest window achievable on-chain, and its parallel execution + 10,000 TPS let hundreds of pools reprice in the same block. Per-block, agent-driven market-making at scale simply is not possible anywhere else. It is the chain built for high-frequency finance, and WICK is what it is for.",
     flowTitle: "per block, every pool",
-    flow: ["read Pyth price", "AI decides spread", "reprice on-chain (v4 hook)", "arb finds nothing", "LPs earn the spread"],
+    flow: ["read MON/USD from Pyth", "AI decides spread", "reprice on-chain (v4 hook)", "arb finds nothing", "LPs earn the spread"],
     flowFoot: "5 txs / block · ~400ms · confirmed before the next block",
     proofLabel: "not a mockup, all real",
     proof: [
       { t: "Real price", d: "Driven by the live MON/USD feed from Pyth, not a made-up walk." },
-      { t: "Real AI", d: "An OpenAI model sets the spread each block and shows its reasoning." },
+      { t: "Real AI", d: "An OpenClaw agent 🦀 sets the spread each block and shows its reasoning." },
       { t: "Real Uniswap v4 hook", d: "WickHook implements IHooks, deployed and verified on MonadScan." },
       { t: "Real deposits", d: "Connect MetaMask and deposit native MON. Your keys, your tx." },
     ],
@@ -64,7 +64,7 @@ const COPY = {
     sub: "Uniswap'ta botlar gerçek fiyatı havuz güncellenmeden yakalayıp likiditeni sıyırıyor. LP'ler buna $230M+ kaybetti. WICK işin başına bir AI market maker koyuyor: Monad'da her blok yeniden fiyatlıyor, sızıntıyı durduruyor ve spread'i sana ödüyor.",
     ctaLive: "Canlı izle →",
     ctaApp: "MON yatır →",
-    heroFoot: "gerçek Pyth fiyatı · gerçek OpenAI · gerçek on-chain",
+    heroFoot: "gerçek Pyth fiyatı · gerçek OpenClaw agent 🦀 · gerçek on-chain",
     stats: [
       { k: "LP'lerin LVR kaybı", v: "$230M+", n: "WICK'in kapattığı sızıntı" },
       { k: "blok süresi", v: "400ms", n: "saniye-altı finality" },
@@ -74,33 +74,33 @@ const COPY = {
     ideaLabel: "fikir",
     ideaTitle: "Profesyonel market-making, herkese açık.",
     ideaBody: [
-      "Pasif AMM'ler fiyat her oynadığında değer sızdırır: arbitraj botları bayat havuz fiyatı ile gerçek piyasa arasındaki farkı cebine atar. Bu sızıntının adı LVR, AMM tasarımının en büyük çözülmemiş problemi.",
+      "Pasif AMM'ler fiyat her oynadığında değer sızdırır: arbitraj botları bayat havuz fiyatı ile gerçek piyasa arasındaki farkı cebine atar. Bu sızıntının adı LVR (Loss-Versus-Rebalancing), AMM tasarımının en büyük çözülmemiş problemi.",
       "Çözüm zaten var: aktif yeniden fiyatlayan propAMM'ler, tıpkı Solana hacminin %35-40'ının arkasındaki kapalı, tek-firma havuzları gibi. Ama hepsi quant masalarının duvarlı bahçesi. WICK bu oyunu herkese açıyor: market-making'i bir AI yapıyor, mantık swap'ın içinde bir Uniswap v4 hook olarak çalışıyor, ve bunu her blok yapabilecek kadar hızlı tek zincirde yaşıyor.",
     ],
     howLabel: "nasıl çalışır",
     howSub: "Yatır, ve bir AI paranı profesyonel bir market maker gibi yönetsin. Bugün bu oyunu sadece Wintermute gibi firmalar oynayabiliyor.",
     how: [
       { t: "Sen yatırırsın", d: "Kendi cüzdanından WICK vault'una MON koyarsın. Tek-taraflı, çift gerekmez, USDC gerekmez." },
-      { t: "AI market-make eder", d: "Bir OpenAI modeli her blok canlı Pyth fiyatını okur, spread'i belirler ve botlar seni sıyıramasın diye yeniden fiyatlar." },
+      { t: "AI market-make eder", d: "Bir OpenClaw agent 🦀 her blok canlı MON/USD fiyatını Pyth'ten okur, spread'i belirler ve botlar seni sıyıramasın diye yeniden fiyatlar." },
       { t: "Spread'i kazanırsın", d: "Market-making spread'i sana akar, propAMM'lerin Solana hacminin %35-40'ını yakaladığı gelir." },
     ],
     pillarsLabel: "işi yürüten şey",
     pillars: [
-      { t: "Quant masası değil, bir AI", d: "Bir OpenAI modeli her blok canlı fiyatı okuyup spread ve rejimi belirliyor: volatilitede LP'leri korumak için açıyor, sakinde flow kazanmak için kısıyor. Gerekçesi ekranda." },
+      { t: "Quant masası değil, bir AI", d: "Bir OpenClaw agent 🦀 her blok canlı fiyatı okuyup spread ve rejimi belirliyor: volatilitede LP'leri korumak için açıyor, sakinde flow kazanmak için kısıyor. Gerekçesi ekranda." },
       { t: "Mantık takasın tam içinde", d: "WICK bir Uniswap v4 hook olarak kurulu: repricing ve dinamik fee swap'ın içinde çalışıyor, üstüne yamanmış değil. Monad'da deploy ve verify edildi." },
       { t: "Token değil, spread ile ödüyor", d: "Gelir, market-making spread'i; propAMM'lerin Solana spot hacminin %35-40'ını yakaladığı kanıtlı model. Token yok, emisyon yok, farming yok." },
-      { t: "Yapısal olarak en düşük LVR", d: "LVR = bayatlama penceresi × volatilite. Monad'ın 400ms bloğu on-chain'deki en kısa pencereyi verir, böylece WICK daha yavaş zincirdeki her havuzdan daha dar quote eder. Sadece Monad'da." },
+      { t: "Yapısal olarak en düşük LVR", d: "LVR = staleness window × volatilite. Monad'ın 400ms bloğu on-chain'deki en kısa pencereyi verir, böylece WICK daha yavaş zincirdeki her havuzdan daha dar quote eder. Sadece Monad'da." },
     ],
     whyLabel: "neden sadece Monad",
-    whyTitle: "LVR = bayatlama penceresi × volatilite.",
-    whyBody: "Fiyat güncellemeleri arası boşluk ne kadar kısaysa, LP o kadar az sızdırır. Monad'ın 400ms bloğu on-chain'de ulaşılabilir en kısa pencereyi verir, paralel execution + 10,000 TPS ise yüzlerce havuzun aynı blokta yeniden fiyatlanmasına izin verir. Blok-başına, AI-güdümlü market-making ölçekte başka hiçbir yerde mümkün değil. Bu, high-frequency finance için kurulmuş zincir, ve WICK tam da onun için.",
+    whyTitle: "LVR = staleness window × volatilite.",
+    whyBody: "Fiyat güncellemeleri arası boşluk ne kadar kısaysa, LP o kadar az sızdırır. Monad'ın 400ms bloğu on-chain'de ulaşılabilir en kısa pencereyi verir, paralel execution + 10,000 TPS ise yüzlerce havuzun aynı blokta yeniden fiyatlanmasına izin verir. Blok-başına, agent-güdümlü market-making ölçekte başka hiçbir yerde mümkün değil. Bu, high-frequency finance için kurulmuş zincir, ve WICK tam da onun için.",
     flowTitle: "her blok, her havuz",
-    flow: ["Pyth fiyatını oku", "AI spread'e karar verir", "on-chain reprice (v4 hook)", "arb bir şey bulamaz", "LP'ler spread kazanır"],
+    flow: ["MON/USD fiyatını Pyth'ten oku", "AI spread'e karar verir", "on-chain reprice (v4 hook)", "arb bir şey bulamaz", "LP'ler spread kazanır"],
     flowFoot: "5 tx / blok · ~400ms · sonraki bloktan önce onaylanır",
     proofLabel: "mockup değil, hepsi gerçek",
     proof: [
       { t: "Gerçek fiyat", d: "Canlı MON/USD Pyth feed'inden sürülüyor, uydurma değil." },
-      { t: "Gerçek AI", d: "Bir OpenAI modeli her blok spread'i belirleyip gerekçesini gösteriyor." },
+      { t: "Gerçek AI", d: "Bir OpenClaw agent 🦀 her blok spread'i belirleyip gerekçesini gösteriyor." },
       { t: "Gerçek Uniswap v4 hook", d: "WickHook, IHooks'u implemente ediyor; MonadScan'de deploy ve verify edildi." },
       { t: "Gerçek deposit", d: "MetaMask bağla, native MON yatır. Kendi anahtarın, kendi tx'in." },
     ],
@@ -248,7 +248,7 @@ export default function Landing() {
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-between gap-2 px-5 py-5 text-[11.5px] text-muted">
           <span>WICK · AI market maker · built on Monad</span>
-          <span>real Pyth · real OpenAI · Uniswap v4 hook · verified on MonadScan</span>
+          <span>real Pyth · real OpenClaw 🦀 · Uniswap v4 hook · verified on MonadScan</span>
         </div>
       </footer>
     </div>

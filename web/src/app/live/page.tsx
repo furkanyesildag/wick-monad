@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useAccount, useConnect, useReadContracts } from "wagmi";
+import { vaultAbi, MONAD_TESTNET_ID } from "@/lib/wagmi";
 
 type PoolState = { price: number; spreadBps: number; lpMarkout: number; lpEquity: number };
 type Hist = { tick: number; price: number; passiveLvr: number; wickLvr: number };
@@ -150,7 +152,10 @@ export default function Home() {
           <TxFeed txs={state?.txs ?? []} explorer={explorer} tps={state?.throughput?.perSec ?? 0} />
         </section>
 
-        {/* YOUR MONEY */}
+        {/* YOUR REAL WALLET POSITION (vault) */}
+        <VaultPosition />
+
+        {/* DEMO POSITION (wallet-free) */}
         <LpPanel lp={state?.yourLp ?? null} trades={state?.stats?.trades ?? 0} amount={lpAmount} setAmount={setLpAmount} onDeposit={becomeLP} busy={busy} running={running} />
 
         {/* POOL DETAIL */}
@@ -219,7 +224,7 @@ function AiBrain({ ai, stream, running }: { ai: Ai; stream: LogEntry[]; running:
     <section className="panel mt-3 overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <span className="label">AI market maker</span>
-        <span className="rounded px-1.5 py-0.5 text-[10px] mono" style={{ background: "rgba(131,110,249,0.12)", color: "var(--accent-2)" }}>GPT</span>
+        <span className="rounded px-1.5 py-0.5 text-[10px] mono" style={{ background: "rgba(131,110,249,0.12)", color: "var(--accent-2)" }}>🦀 OpenClaw</span>
         <span className="ml-auto flex items-center gap-1.5 text-[11px]" style={{ color: running ? "var(--up)" : "var(--muted)" }}>
           {running && <span className="blink h-1.5 w-1.5 rounded-full" style={{ background: "var(--up)" }} />}{running ? "deciding live" : "idle"}
         </span>
@@ -236,8 +241,8 @@ function AiBrain({ ai, stream, running }: { ai: Ai; stream: LogEntry[]; running:
           </div>
         </div>
         <div className="min-w-0">
-          <div className="label mb-1">what the AI is deciding</div>
-          <p className="text-[14px] leading-snug text-foreground">{ai ? `“${ai.reasoning}”` : "Run the simulation · the AI reads the live MON/USD price action and sets the spread to protect LPs while winning flow."}</p>
+          <div className="label mb-1">what the OpenClaw agent 🦀 is deciding</div>
+          <p className="text-[14px] leading-snug text-foreground">{ai ? `“${ai.reasoning}”` : "Run the simulation · the OpenClaw agent reads the live MON/USD price action and sets the spread to protect LPs while winning flow."}</p>
           {stream.length > 1 && (
             <div className="mt-3 space-y-1 border-t border-border/60 pt-2">
               {stream.slice(1).map((e, i) => (
@@ -295,7 +300,7 @@ function MonadThroughput({ throughput, stats }: { throughput?: Throughput; stats
 function SimExplainer() {
   return (
     <div className="panel-2 mb-3 p-3.5 text-[12.5px] leading-relaxed text-muted2">
-      <p><span className="text-foreground">Live on Monad testnet · real contracts, real transactions.</span> The price is driven by the <span className="text-foreground">real MON/USD feed from Pyth</span> (replayed & time-compressed so a few hours of market plays out in minutes). A real OpenAI model decides the spread each move and writes its reasoning above.</p>
+      <p><span className="text-foreground">Live on Monad testnet · real contracts, real transactions.</span> The price is driven by the <span className="text-foreground">real MON/USD feed from Pyth</span> (replayed & time-compressed so a few hours of market plays out in minutes). A real OpenClaw agent 🦀 decides the spread each move and writes its reasoning above.</p>
       <p className="mt-1.5">The agent pushes the <span className="text-foreground">same</span> arbitrage + retail trades through both pools, so the only variable is WICK&apos;s per-block repricing. Every number is read from chain; every line in the tx feed is a transaction you can open on MonadScan. The shock button simulates a real volatility event.</p>
     </div>
   );
@@ -434,6 +439,71 @@ function Legend({ color, label }: { color: string; label: string }) {
   return <span className="flex items-center gap-1.5 text-[11.5px] text-muted2"><span className="inline-block h-2 w-2 rounded-[2px]" style={{ background: color }} /> {label}</span>;
 }
 
+function VaultPosition() {
+  const { address, isConnected, chainId } = useAccount();
+  const { connect, connectors } = useConnect();
+  const [vault, setVault] = useState<`0x${string}` | null>(null);
+  const [explorer, setExplorer] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+  useEffect(() => {
+    fetch("/api/info").then((r) => r.json()).then((d) => { setVault(d.addresses?.vault ?? null); setExplorer(d.explorer ?? null); }).catch(() => {});
+  }, []);
+  const reads = useReadContracts({
+    contracts: vault && address
+      ? [
+          { address: vault, abi: vaultAbi, functionName: "assetsOf", args: [address] },
+          { address: vault, abi: vaultAbi, functionName: "earnedOf", args: [address] },
+          { address: vault, abi: vaultAbi, functionName: "shares", args: [address] },
+        ]
+      : [],
+    query: { enabled: !!vault && !!address, refetchInterval: 4000 },
+  });
+  const [assets, earned, shares] = (reads.data ?? []).map((r) => r.result as bigint | undefined);
+  const has = shares !== undefined && shares > 0n;
+  const mon = (w?: bigint, dp = 4) => (w === undefined ? "—" : (Number(w) / 1e18).toLocaleString("en-US", { maximumFractionDigits: dp }));
+  const wrongChain = isConnected && chainId !== MONAD_TESTNET_ID;
+  const aiEarn = async () => { setWorking(true); await fetch("/api/app/earn", { method: "POST" }); setTimeout(() => reads.refetch(), 1000); setTimeout(() => setWorking(false), 1600); };
+
+  return (
+    <section className="panel mt-3">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <span className="label">your wallet · real MON in WICK</span>
+        <span className="ml-auto text-[11px] text-muted">{isConnected ? (wrongChain ? "switch to Monad Testnet" : "live from the vault") : "connect to view"}</span>
+      </div>
+      {!isConnected ? (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-4">
+          <p className="text-[12.5px] text-muted2">Connect your wallet to see the real MON you deposited. New here? Deposit on the Earn page first.</p>
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={() => connect({ connector: connectors[0] })} className="btn btn-primary px-4 py-1.5 text-[12.5px]">Connect MetaMask</button>
+            <Link href="/app" className="btn px-3.5 py-1.5 text-[12.5px]" style={{ borderColor: "var(--accent)", color: "var(--accent-2)" }}>Deposit MON →</Link>
+          </div>
+        </div>
+      ) : !has ? (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-4">
+          <p className="text-[12.5px] text-muted2">No position yet for {address?.slice(0, 6)}…{address?.slice(-4)}. Deposit MON and the OpenClaw agent 🦀 puts it to work.</p>
+          <Link href="/app" className="btn btn-primary ml-auto px-4 py-1.5 text-[12.5px]">Deposit MON →</Link>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 px-4 py-4">
+          <div>
+            <div className="label">your MON in WICK</div>
+            <div className="mono text-[28px] font-semibold leading-none">{mon(assets)} <span className="text-[14px] text-muted">MON</span></div>
+          </div>
+          <div>
+            <div className="label">earned</div>
+            <div className="mono mt-1 text-[16px] font-semibold" style={{ color: "var(--up)" }}>+{mon(earned !== undefined && earned < 0n ? -earned : earned, 5)} MON</div>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={aiEarn} disabled={working} className="btn px-3.5 py-2 text-[12.5px]" style={{ borderColor: "var(--accent)", color: "var(--accent-2)" }}>{working ? "working…" : "🦀 Let the agent work"}</button>
+            <Link href="/app" className="btn px-3.5 py-2 text-[12.5px]">Manage →</Link>
+            {explorer && vault && <a href={`${explorer}/address/${vault}`} target="_blank" rel="noreferrer" className="mono text-[11px] hover:text-foreground" style={{ color: "var(--accent-2)" }}>vault ↗</a>}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function LpPanel({ lp, trades, amount, setAmount, onDeposit, busy, running }: {
   lp: YourLp; trades: number; amount: number; setAmount: (n: number) => void; onDeposit: (n: number) => void; busy: boolean; running: boolean;
 }) {
@@ -554,7 +624,7 @@ function Footer({ contractHref }: { contractHref?: string }) {
   return (
     <footer className="mt-5 border-t border-border pt-4">
       <div className="grid grid-cols-1 gap-x-8 gap-y-2 text-[12px] text-muted sm:grid-cols-3">
-        <p><span className="text-muted2">Real AI.</span> An OpenAI model sets the spread every block from real Pyth price action · not a fixed curve.</p>
+        <p><span className="text-muted2">Real AI.</span> An OpenClaw agent 🦀 sets the spread every block from real Pyth price action · not a fixed curve.</p>
         <p><span className="text-muted2">Only on Monad.</span> Per-block repricing across many pools needs 400ms blocks + 10,000 TPS + parallel execution.</p>
         <p><span className="text-muted2">Real revenue.</span> The market-making spread · how propAMMs capture 35–40% of Solana spot volume. No token, no emissions.</p>
       </div>
