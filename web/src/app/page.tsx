@@ -10,7 +10,7 @@ type LpPoint = { tick: number; value: number; earned: number };
 type YourLp = { value: number; cost: number; earned: number; returnPct: number; sinceBlock: number; history: LpPoint[] } | null;
 type Stats = { blocks: number; trades: number; wickLpProfit: number; savedVsPassive: number };
 type State = {
-  tick: number; oraclePrice: number; passive: PoolState; wick: PoolState;
+  tick: number; oraclePrice: number; monUsd: number; passive: PoolState; wick: PoolState;
   history: Hist[]; log: LogEntry[]; txs: TxEntry[]; yourLp: YourLp; stats: Stats;
 };
 type Info = { chainId: number; onMonad: boolean; explorer: string | null; addresses: Record<string, string> };
@@ -109,7 +109,7 @@ export default function Home() {
 
   return (
     <div className="min-h-full">
-      <TopBar tick={state?.tick ?? 0} running={running} oraclePrice={state?.oraclePrice ?? 0} onMonad={info?.onMonad ?? false} contractHref={contractHref} />
+      <TopBar tick={state?.tick ?? 0} running={running} monUsd={state?.monUsd ?? 0} onMonad={info?.onMonad ?? false} contractHref={contractHref} />
 
       <main className="mx-auto w-full max-w-[1180px] px-5 py-6">
         <div className="mb-4">
@@ -173,7 +173,7 @@ export default function Home() {
   );
 }
 
-function TopBar({ tick, running, oraclePrice, onMonad, contractHref }: { tick: number; running: boolean; oraclePrice: number; onMonad: boolean; contractHref?: string }) {
+function TopBar({ tick, running, monUsd, onMonad, contractHref }: { tick: number; running: boolean; monUsd: number; onMonad: boolean; contractHref?: string }) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-[#08080a]/85 backdrop-blur-sm">
       <div className="mx-auto flex h-[52px] max-w-[1180px] items-center gap-3 px-5 py-2.5">
@@ -183,7 +183,11 @@ function TopBar({ tick, running, oraclePrice, onMonad, contractHref }: { tick: n
           <span className="hidden text-[11.5px] text-muted sm:inline">autonomous market maker</span>
         </div>
         <div className="ml-auto flex items-center gap-0 text-[12px]">
-          <Stat k="WMON" v={usd(oraclePrice)} />
+          <span className="flex items-baseline gap-1.5 px-3">
+            <span className="text-muted">MON/USD</span>
+            <span className="mono text-foreground">{monUsd > 0 ? `$${monUsd.toFixed(5)}` : "—"}</span>
+            <span className="text-[10px] text-accent">Pyth</span>
+          </span>
           <Sep />
           <Stat k="block" v={<span className="mono">{tick}</span>} />
           <Sep />

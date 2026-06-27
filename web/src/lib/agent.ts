@@ -1,5 +1,9 @@
 import "server-only";
 import { account, pub, wallet, ADDR, WAD, oracleAbi, poolAbi, wickAbi, erc20Abi } from "./contracts";
+import { getLiveMonUsd, getRealSeries } from "./pyth";
+
+// Real MON/USD moves a few % over hours; amplify so the genuine path is watchable in minutes.
+const PRICE_AMPLIFY = 30;
 
 // ----------------------------------------------------------------------------
 // Singleton sim state (survives dev HMR via globalThis).
@@ -25,6 +29,9 @@ type Sim = {
   lpDepositTick: number;
   lpJoinWickLvr: number; // WICK lpMarkout at the moment the user joined
   lpHistory: LpPoint[];
+  realSeries: number[]; // real MON/USD closes from Pyth, replayed as the price path
+  realIdx: number;
+  liveMonUsd: number; // latest real MON/USD spot (for the ticker)
 };
 
 const g = globalThis as unknown as { __wickSim?: Sim };
@@ -33,6 +40,7 @@ export const sim: Sim =
   (g.__wickSim = {
     tick: 0, shockQueued: false, approvalsDone: false, busy: false, trades: 0,
     history: [], log: [], txs: [], lpActive: false, lpShares: 0n, lpCost: 0, lpDepositTick: 0, lpJoinWickLvr: 0, lpHistory: [],
+    realSeries: [], realIdx: 0, liveMonUsd: 0,
   });
 // Backfill fields if an older-shaped singleton persisted across an HMR reload.
 sim.log ??= [];
@@ -44,6 +52,9 @@ sim.lpCost ??= 0;
 sim.lpDepositTick ??= 0;
 sim.lpJoinWickLvr ??= 0;
 sim.lpHistory ??= [];
+sim.realSeries ??= [];
+sim.realIdx ??= 0;
+sim.liveMonUsd ??= 0;
 
 const toNum = (x: bigint, dec = 18) => Number(x) / 10 ** dec;
 const fmtUsd = (n: number) => `$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
@@ -148,9 +159,22 @@ export async function runTick() {
 
     const prev = (await pub.readContract({ address: ADDR.oracle, abi: oracleAbi, functionName: "price" })) as bigint;
 
-    let bps = Math.floor(Math.random() * 201) - 100; // -100..+100
     const shocked = sim.shockQueued;
-    if (shocked) { bps = 500; sim.shockQueued = false; }
+    if (shocked) sim.shockQueued = false;
+    // Drive the price off REAL MON/USD data from Pyth (replayed, amplified for the demo).
+    if (sim.realSeries.length === 0) sim.realSeries = await getRealSeries();
+    if (blk % 8 === 1) { const live = await getLiveMonUsd(); if (live) sim.liveMonUsd = live; }
+    let bps: number;
+    if (shocked) {
+      bps = 500; // stress test: simulate a real volatility event
+    } else if (sim.realSeries.length > 1) {
+      const s = sim.realSeries;
+      const a = s[sim.realIdx % s.length];
+      sim.realIdx = (sim.realIdx + 1) % s.length;
+      bps = Math.round((s[sim.realIdx % s.length] / a - 1) * 10_000 * PRICE_AMPLIFY);
+    } else {
+      bps = Math.floor(Math.random() * 201) - 100; // fallback if Pyth is unreachable
+    }
     const newPrice = prev + (prev * BigInt(bps)) / 10_000n;
     const diff = newPrice > prev ? newPrice - prev : prev - newPrice;
     const volBps = prev === 0n ? 0n : (diff * 10_000n) / prev;
@@ -238,6 +262,7 @@ export async function readState() {
   return {
     tick: sim.tick,
     oraclePrice: toNum(op),
+    monUsd: sim.liveMonUsd,
     passive: { price: toNum(pRes[0]), spreadBps: Number(pRes[1]), lpMarkout: toNum(pLvr), lpEquity: toNum(pEq) },
     wick: { price: toNum(wPeg), spreadBps: Number(wSpread), lpMarkout: toNum(wLvr), lpEquity: wickEquity },
     history: sim.history,
