@@ -5,7 +5,7 @@ import { account, pub, wallet, ADDR, WAD, oracleAbi, poolAbi, wickAbi, erc20Abi 
 // Singleton sim state (survives dev HMR via globalThis).
 // ----------------------------------------------------------------------------
 export type HistPoint = { tick: number; price: number; passiveLvr: number; wickLvr: number };
-export type LogEntry = { tick: number; icon: string; text: string; tone: "info" | "loss" | "win" | "muted" };
+export type LogEntry = { tick: number; tag: string; text: string; tone: "info" | "loss" | "win" | "muted" };
 export type TxEntry = { tick: number; label: string; hash: string };
 
 type Sim = {
@@ -48,16 +48,26 @@ function bsqrt(x: bigint): bigint {
   return y;
 }
 
-function note(blk: number, icon: string, text: string, tone: LogEntry["tone"] = "info") {
-  sim.log.unshift({ tick: blk, icon, text, tone });
+function note(blk: number, tag: string, text: string, tone: LogEntry["tone"] = "info") {
+  sim.log.unshift({ tick: blk, tag, text, tone });
   if (sim.log.length > 40) sim.log.pop();
 }
 
+// Explicit nonce management: submitting a block's ~5 txs without awaiting each receipt
+// (for speed) races viem's auto-nonce, so we assign nonces ourselves.
+let nonceCounter = 0;
+async function syncNonce() {
+  nonceCounter = await pub.getTransactionCount({ address: account.address, blockTag: "pending" });
+}
+
 // Submit a tx and record it in the on-chain feed, WITHOUT waiting for the receipt —
-// the caller batches the receipt waits so a block's ~5 txs confirm in parallel (snappy
-// on Monad). No fixed gas limit: viem estimates a tight one (gas is charged on the limit).
+// the caller batches the receipt waits so a block's txs confirm in parallel (snappy on
+// Monad). No fixed gas limit: viem estimates a tight one (gas is charged on the limit).
+// The nonce only advances on a successful submit, so a skipped/reverting tx leaves no gap.
 async function submit(blk: number, label: string, args: Parameters<typeof wallet.writeContract>[0]) {
-  const hash = await wallet.writeContract(args);
+  const nonce = nonceCounter;
+  const hash = await wallet.writeContract({ ...args, nonce } as typeof args);
+  nonceCounter = nonce + 1;
   sim.txs.unshift({ tick: blk, label, hash });
   if (sim.txs.length > 28) sim.txs.pop();
   return hash;
@@ -101,20 +111,20 @@ async function arbPassive(bag: `0x${string}`[], blk: number, P: bigint) {
   const k = Rb * Rq;
   const targetRb = bsqrt((k / P) * WAD);
   if (targetRb === 0n) return;
-  if (targetRb < Rb) await swap(bag, blk, "🦈 Arb skims Passive pool", ADDR.passive, false, k / targetRb - Rq);
-  else if (targetRb > Rb) await swap(bag, blk, "🦈 Arb skims Passive pool", ADDR.passive, true, targetRb - Rb);
+  if (targetRb < Rb) await swap(bag, blk, "arb → passive", ADDR.passive, false, k / targetRb - Rq);
+  else if (targetRb > Rb) await swap(bag, blk, "arb → passive", ADDR.passive, true, targetRb - Rb);
 }
 
 async function retail(bag: `0x${string}`[], blk: number, seed: number, price: bigint) {
   const sellBase = seed % 2 === 0;
   const sizeBase = (2n + BigInt(seed % 5)) * (WAD / 10n); // 0.2 - 0.6 WMON
   if (sellBase) {
-    await swap(bag, blk, "Retail trade → Passive", ADDR.passive, true, sizeBase);
-    await swap(bag, blk, "Retail trade → WICK", ADDR.wick, true, sizeBase);
+    await swap(bag, blk, "retail → passive", ADDR.passive, true, sizeBase);
+    await swap(bag, blk, "retail → WICK", ADDR.wick, true, sizeBase);
   } else {
     const sizeQuote = (sizeBase * price) / WAD;
-    await swap(bag, blk, "Retail trade → Passive", ADDR.passive, false, sizeQuote);
-    await swap(bag, blk, "Retail trade → WICK", ADDR.wick, false, sizeQuote);
+    await swap(bag, blk, "retail → passive", ADDR.passive, false, sizeQuote);
+    await swap(bag, blk, "retail → WICK", ADDR.wick, false, sizeQuote);
   }
 }
 
@@ -125,6 +135,7 @@ export async function runTick() {
   sim.busy = true;
   const blk = sim.tick + 1;
   try {
+    await syncNonce();
     await ensureApprovals(blk);
 
     const prev = (await pub.readContract({ address: ADDR.oracle, abi: oracleAbi, functionName: "price" })) as bigint;
@@ -142,11 +153,11 @@ export async function runTick() {
     const prevW = sim.history.at(-1)?.wickLvr ?? 0;
 
     const bag: `0x${string}`[] = [];
-    note(blk, shocked ? "⚡" : "👁", `${shocked ? "VOLATILITY SHOCK — " : ""}Fair price → ${fmtUsd(toNum(newPrice))} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`, shocked ? "loss" : "info");
-    bag.push(await submit(blk, "Push oracle price", { address: ADDR.oracle, abi: oracleAbi, functionName: "pushPrice", args: [newPrice], account, chain: undefined }));
+    note(blk, shocked ? "SHOCK" : "ORACLE", `${shocked ? "+5% jump — " : ""}fair price ${fmtUsd(toNum(newPrice))} (${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%)`, shocked ? "loss" : "info");
+    bag.push(await submit(blk, "push oracle", { address: ADDR.oracle, abi: oracleAbi, functionName: "pushPrice", args: [newPrice], account, chain: undefined }));
 
-    note(blk, "🧠", `Reprice WICK to fair · spread ${Math.min(spreadPct, 5).toFixed(2)}% (vol ${(Number(volBps) / 100).toFixed(2)}%)`, "win");
-    bag.push(await submit(blk, "🧠 Agent reprices WICK", { address: ADDR.wick, abi: wickAbi, functionName: "reprice", args: [newPrice, volBps], account, chain: undefined }));
+    note(blk, "REPRICE", `WICK pegged to fair · spread ${Math.min(spreadPct, 5).toFixed(2)}% (vol ${(Number(volBps) / 100).toFixed(2)}%)`, "info");
+    bag.push(await submit(blk, "reprice WICK", { address: ADDR.wick, abi: wickAbi, functionName: "reprice", args: [newPrice, volBps], account, chain: undefined }));
 
     if (newPrice !== prev) await arbPassive(bag, blk, newPrice);
     await retail(bag, blk, sim.tick, newPrice);
@@ -163,8 +174,8 @@ export async function runTick() {
     const pNow = toNum(pLvr), wNow = toNum(wLvr);
     const dPassive = pNow - prevP; // >0 = passive LP lost this block
     const dWick = wNow - prevW; // <0 = wick LP earned this block
-    if (dPassive > 0.5) note(blk, "🩸", `Passive LP skimmed by arbitrageur: −${fmtUsd(dPassive)}`, "loss");
-    if (dWick < -0.01) note(blk, "🛡", `WICK held the line — LPs earned +${fmtUsd(-dWick)}`, "win");
+    if (dPassive > 0.5) note(blk, "ARB", `passive LP skimmed −${fmtUsd(dPassive)}`, "loss");
+    if (dWick < -0.01) note(blk, "EARN", `WICK LPs earned +${fmtUsd(-dWick)} from spread`, "win");
 
     sim.history.push({ tick: sim.tick, price: toNum(newPrice), passiveLvr: pNow, wickLvr: wNow });
     if (sim.history.length > 80) sim.history.shift();
@@ -217,6 +228,7 @@ export async function readState() {
 
 export async function becomeLP(): Promise<{ ok: boolean }> {
   const blk = sim.tick;
+  await syncNonce();
   await ensureApprovals(blk);
   const baseAmt = 20n * WAD; // 20 WMON
   const [price, Rb, Rq, sharesBefore] = await Promise.all([
@@ -226,15 +238,15 @@ export async function becomeLP(): Promise<{ ok: boolean }> {
     pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "shares", args: [account.address] }) as Promise<bigint>,
   ]);
   const quoteAmt = (baseAmt * Rq) / Rb;
-  await sendTx(blk, "Mint test WMON", { address: ADDR.wmon, abi: erc20Abi, functionName: "mint", args: [account.address, baseAmt], account, chain: undefined });
-  await sendTx(blk, "Mint test USDC", { address: ADDR.usdc, abi: erc20Abi, functionName: "mint", args: [account.address, quoteAmt], account, chain: undefined });
-  await sendTx(blk, "💧 You deposit into WICK", { address: ADDR.wick, abi: poolAbi, functionName: "addLiquidity", args: [baseAmt, quoteAmt], account, chain: undefined });
+  await sendTx(blk, "mint WMON", { address: ADDR.wmon, abi: erc20Abi, functionName: "mint", args: [account.address, baseAmt], account, chain: undefined });
+  await sendTx(blk, "mint USDC", { address: ADDR.usdc, abi: erc20Abi, functionName: "mint", args: [account.address, quoteAmt], account, chain: undefined });
+  await sendTx(blk, "deposit → WICK", { address: ADDR.wick, abi: poolAbi, functionName: "addLiquidity", args: [baseAmt, quoteAmt], account, chain: undefined });
 
   const sharesAfter = (await pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "shares", args: [account.address] })) as bigint;
   sim.lpShares = sharesAfter - sharesBefore;
   sim.lpCost = toNum(quoteAmt) + (toNum(baseAmt) * toNum(price));
   sim.lpActive = true;
-  note(blk, "💧", `You became a WICK LP — deposited ${fmtUsd(sim.lpCost)}. Your share of every spread now accrues to you.`, "win");
+  note(blk, "LP", `you deposited ${fmtUsd(sim.lpCost)} — now earning the spread`, "win");
   return { ok: true };
 }
 
