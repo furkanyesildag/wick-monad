@@ -4,15 +4,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 type PoolState = { price: number; spreadBps: number; lpMarkout: number; lpEquity: number };
 type Hist = { tick: number; price: number; passiveLvr: number; wickLvr: number };
-type State = { tick: number; oraclePrice: number; passive: PoolState; wick: PoolState; history: Hist[] };
+type LogEntry = { tick: number; icon: string; text: string; tone: "info" | "loss" | "win" | "muted" };
+type TxEntry = { tick: number; label: string; hash: string };
+type YourLp = { value: number; cost: number; pnl: number } | null;
+type Stats = { blocks: number; trades: number; wickLpProfit: number; savedVsPassive: number };
+type State = {
+  tick: number; oraclePrice: number; passive: PoolState; wick: PoolState;
+  history: Hist[]; log: LogEntry[]; txs: TxEntry[]; yourLp: YourLp; stats: Stats;
+};
 type Info = { chainId: number; onMonad: boolean; explorer: string | null; addresses: Record<string, string> };
 
 const TICK_MS = 650;
 
 function usd(n: number, signed = false) {
   const s = n < 0 ? "−" : signed ? "+" : "";
-  const v = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${s}$${v}`;
+  return `${s}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function compact(n: number) {
   const s = n < 0 ? "−" : "";
@@ -20,6 +26,7 @@ function compact(n: number) {
   if (a >= 1000) return `${s}$${(a / 1000).toFixed(1)}k`;
   return `${s}$${a.toFixed(0)}`;
 }
+const short = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
 
 function useCountUp(value: number, duration = 700) {
   const [display, setDisplay] = useState(value);
@@ -49,14 +56,12 @@ export default function Home() {
   const [info, setInfo] = useState<Info | null>(null);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [lpMsg, setLpMsg] = useState<string | null>(null);
   const runningRef = useRef(false);
 
   const pull = useCallback(async () => {
     const r = await fetch("/api/state", { cache: "no-store" });
     if (r.ok) setState(await r.json());
   }, []);
-
   useEffect(() => {
     pull();
     fetch("/api/info").then((r) => r.json()).then(setInfo).catch(() => {});
@@ -67,13 +72,10 @@ export default function Home() {
       try {
         const r = await fetch("/api/tick", { method: "POST", cache: "no-store" });
         if (r.ok) setState(await r.json());
-      } catch {
-        /* keep going */
-      }
+      } catch { /* keep going */ }
       await new Promise((res) => setTimeout(res, TICK_MS));
     }
   }, []);
-
   const toggleRun = () => {
     const next = !running;
     setRunning(next);
@@ -92,9 +94,7 @@ export default function Home() {
   };
   const becomeLP = async () => {
     setBusy(true);
-    setLpMsg("Depositing into the WICK pool…");
-    const r = await fetch("/api/lp", { method: "POST" });
-    setLpMsg(r.ok ? "You're a WICK LP — your share of every spread now accrues to you." : "LP deposit failed.");
+    await fetch("/api/lp", { method: "POST" });
     await pull();
     setBusy(false);
   };
@@ -103,58 +103,49 @@ export default function Home() {
   const wickPnl = state ? -state.wick.lpMarkout : 0;
   const shocked = (state?.wick.spreadBps ?? 0) > 80;
   const wickAddr = info?.addresses?.wick;
-  const explorerHref = info?.explorer && wickAddr ? `${info.explorer}/address/${wickAddr}` : undefined;
+  const explorer = info?.explorer ?? null;
+  const explorerHref = explorer && wickAddr ? `${explorer}/address/${wickAddr}` : undefined;
 
   return (
     <main className="relative z-10 mx-auto w-full max-w-6xl px-5 py-7 sm:py-9">
-      <Header
-        tick={state?.tick ?? 0}
-        running={running}
-        oraclePrice={state?.oraclePrice ?? 0}
-        onMonad={info?.onMonad ?? false}
-        explorerHref={explorerHref}
-      />
+      <Header tick={state?.tick ?? 0} running={running} oraclePrice={state?.oraclePrice ?? 0} onMonad={info?.onMonad ?? false} explorerHref={explorerHref} />
+      <HowItWorks />
 
-      {/* HERO */}
-      <section className="glass mt-6 overflow-hidden p-6 sm:p-8">
+      <section className="glass mt-5 overflow-hidden p-6 sm:p-8">
         <div className="text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-purple-bright/80">
-            LP profit from order flow · vs simply holding
-          </p>
-          <p className="mt-2 text-sm text-muted">
-            Same liquidity. Same price action. Same trades.{" "}
-            <span className="text-foreground/85">One pool bleeds to bots — the other earns the spread.</span>
-          </p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-purple-bright/80">LP profit from order flow · vs simply holding</p>
+          <p className="mt-2 text-sm text-muted">Same liquidity. Same price action. Same trades. <span className="text-foreground/85">One pool bleeds to bots — the other earns the spread.</span></p>
         </div>
-
         <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <HeroCard label="Passive Uniswap" sub="static fee · never reprices" value={passivePnl} tone="loss" caption="skimmed by arbitrageurs (LVR)" />
           <HeroCard label="WICK" sub="AI agent reprices every block" value={wickPnl} tone="win" caption="earned from the spread" running={running} />
         </div>
-
         <Chart history={state?.history ?? []} />
       </section>
 
-      {/* CONTROLS */}
+      <StatTiles stats={state?.stats} />
+
       <section className="mt-5 flex flex-wrap items-center gap-3">
         <button onClick={toggleRun} className={`btn px-5 py-2.5 ${running ? "" : "btn-primary"}`} style={running ? { background: "rgba(131,110,249,0.08)" } : undefined}>
           {running ? "❚❚ Pause" : "▶ Run simulation"}
         </button>
-        <button onClick={step} disabled={running || busy} className="btn glass-soft px-4 py-2.5 text-foreground/90">
-          Step one block
-        </button>
-        <button onClick={shock} disabled={busy} className="btn px-4 py-2.5" style={{ background: "rgba(255,79,139,0.12)", borderColor: "rgba(255,79,139,0.45)", color: "#ffc6da" }}>
-          ⚡ Volatility shock
-        </button>
+        <button onClick={step} disabled={running || busy} className="btn glass-soft px-4 py-2.5 text-foreground/90">Step one block</button>
+        <button onClick={shock} disabled={busy} className="btn px-4 py-2.5" style={{ background: "rgba(255,79,139,0.12)", borderColor: "rgba(255,79,139,0.45)", color: "#ffc6da" }}>⚡ Volatility shock</button>
         <div className="flex-1" />
-        <button onClick={becomeLP} disabled={busy} className="btn px-5 py-2.5" style={{ background: "rgba(131,110,249,0.14)", borderColor: "var(--monad-purple)", color: "#d9d1ff" }}>
-          + Become a WICK LP
-        </button>
+        {state?.yourLp ? (
+          <YourPosition lp={state.yourLp} />
+        ) : (
+          <button onClick={becomeLP} disabled={busy} className="btn px-5 py-2.5" style={{ background: "rgba(131,110,249,0.14)", borderColor: "var(--monad-purple)", color: "#d9d1ff" }}>+ Become a WICK LP</button>
+        )}
       </section>
-      {lpMsg && <p className="mt-2.5 text-sm text-purple-bright">{lpMsg}</p>}
 
-      {/* POOL DETAIL */}
-      <section className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {/* LIVE CONSOLE */}
+      <section className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <AgentConsole log={state?.log ?? []} running={running} />
+        <TxFeed txs={state?.txs ?? []} explorer={explorer} />
+      </section>
+
+      <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <PoolCard title="Passive Uniswap" tone="loss" pool={state?.passive} oracle={state?.oraclePrice ?? 0} reprices={false} shocked={false} />
         <PoolCard title="WICK · propAMM" tone="win" pool={state?.wick} oracle={state?.oraclePrice ?? 0} reprices shocked={shocked} />
       </section>
@@ -190,6 +181,59 @@ function Header({ tick, running, oraclePrice, onMonad, explorerHref }: { tick: n
   );
 }
 
+function HowItWorks() {
+  const steps = [
+    { n: "1", t: "You deposit", d: "USDC + token into the pool" },
+    { n: "2", t: "AI market-makes it", d: "reprices every block on Monad" },
+    { n: "3", t: "You earn the spread", d: "instead of losing to bots" },
+  ];
+  return (
+    <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      {steps.map((s, i) => (
+        <div key={s.n} className="glass-soft flex items-center gap-3 px-4 py-3">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[13px] font-bold" style={{ background: "rgba(131,110,249,0.18)", color: "var(--monad-purple-bright)", border: "1px solid rgba(131,110,249,0.4)" }}>{s.n}</span>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold">{s.t}</p>
+            <p className="truncate text-[11.5px] text-muted">{s.d}</p>
+          </div>
+          {i < 2 && <span className="ml-auto hidden text-muted sm:inline">→</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatTiles({ stats }: { stats?: Stats }) {
+  const items = [
+    { k: "Blocks repriced", v: stats ? String(stats.blocks) : "0", tone: "muted" as const },
+    { k: "Trades routed", v: stats ? String(stats.trades) : "0", tone: "muted" as const },
+    { k: "WICK LP profit", v: stats ? usd(stats.wickLpProfit, true) : "—", tone: "win" as const },
+    { k: "Better off vs passive", v: stats ? usd(stats.savedVsPassive, true) : "—", tone: "win" as const },
+  ];
+  return (
+    <section className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {items.map((it) => (
+        <div key={it.k} className="glass-soft px-4 py-3">
+          <p className="text-[11px] text-muted">{it.k}</p>
+          <p className="mono mt-1 text-lg font-bold" style={{ color: it.tone === "win" ? "var(--win)" : "var(--foreground)" }}>{it.v}</p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function YourPosition({ lp }: { lp: NonNullable<YourLp> }) {
+  const value = useCountUp(lp.value);
+  const up = lp.pnl >= 0;
+  return (
+    <div className="glass-soft flex items-center gap-3 px-4 py-2" style={{ borderColor: "var(--monad-purple)" }}>
+      <span className="text-xs text-muted">Your LP position</span>
+      <span className="mono font-bold">{usd(value)}</span>
+      <span className="mono text-xs" style={{ color: up ? "var(--win)" : "var(--loss)" }}>{up ? "▲" : "▼"} {usd(lp.pnl, true)}</span>
+    </div>
+  );
+}
+
 function HeroCard({ label, sub, value, tone, caption, running }: { label: string; sub: string; value: number; tone: "loss" | "win"; caption: string; running?: boolean }) {
   const display = useCountUp(value);
   const color = tone === "loss" ? "var(--loss)" : "var(--win)";
@@ -204,12 +248,60 @@ function HeroCard({ label, sub, value, tone, caption, running }: { label: string
         </div>
         <p className="text-[11px] text-muted">{sub}</p>
       </div>
-      <p className={`mono mt-3 text-[44px] font-extrabold leading-none sm:text-[58px] ${glow}`} style={{ color, letterSpacing: "-0.02em" }}>
-        {usd(display, true)}
-      </p>
-      <p className="mt-2.5 flex items-center gap-1.5 text-sm" style={{ color }}>
-        {value < 0 ? "▼" : "▲"} <span className="text-muted">{caption}</span>
-      </p>
+      <p className={`mono mt-3 text-[44px] font-extrabold leading-none sm:text-[58px] ${glow}`} style={{ color, letterSpacing: "-0.02em" }}>{usd(display, true)}</p>
+      <p className="mt-2.5 flex items-center gap-1.5 text-sm" style={{ color }}>{value < 0 ? "▼" : "▲"} <span className="text-muted">{caption}</span></p>
+    </div>
+  );
+}
+
+function AgentConsole({ log, running }: { log: LogEntry[]; running: boolean }) {
+  const color = (t: LogEntry["tone"]) => (t === "loss" ? "var(--loss)" : t === "win" ? "var(--win)" : t === "muted" ? "var(--muted)" : "var(--foreground)");
+  return (
+    <div className="glass flex h-[300px] flex-col p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <span className={`grid h-6 w-6 place-items-center rounded-md ${running ? "agent-thinking" : ""}`} style={{ background: "rgba(131,110,249,0.18)" }}>🧠</span>
+        <h3 className="text-sm font-semibold">Agent activity</h3>
+        <span className="ml-auto text-[11px] text-muted">what the AI is thinking & doing</span>
+      </div>
+      <div className="hairline mb-2 h-px" />
+      <div className="flex-1 space-y-1.5 overflow-y-auto pr-1">
+        {log.length === 0 && <p className="mt-10 text-center text-sm text-muted">Run the simulation to watch the agent work, block by block.</p>}
+        {log.map((e, i) => (
+          <div key={`${e.tick}-${i}`} className="flex items-start gap-2 text-[13px] leading-snug">
+            <span className="mono w-9 shrink-0 text-right text-[11px] text-muted">#{e.tick}</span>
+            <span className="shrink-0">{e.icon}</span>
+            <span style={{ color: color(e.tone) }}>{e.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TxFeed({ txs, explorer }: { txs: TxEntry[]; explorer: string | null }) {
+  return (
+    <div className="glass flex h-[300px] flex-col p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="grid h-6 w-6 place-items-center rounded-md" style={{ background: "rgba(131,110,249,0.18)" }}>⛓</span>
+        <h3 className="text-sm font-semibold">On-chain transactions</h3>
+        <span className="ml-auto text-[11px] text-muted">{explorer ? "live on Monad testnet" : "local"}</span>
+      </div>
+      <div className="hairline mb-2 h-px" />
+      <div className="flex-1 space-y-1 overflow-y-auto pr-1">
+        {txs.length === 0 && <p className="mt-10 text-center text-sm text-muted">Each agent action is a real transaction — they&apos;ll stream here.</p>}
+        {txs.map((tx, i) => {
+          const href = explorer ? `${explorer}/tx/${tx.hash}` : undefined;
+          const row = (
+            <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[12.5px] hover:bg-[rgba(131,110,249,0.07)]">
+              <span className="mono w-9 shrink-0 text-right text-[11px] text-muted">#{tx.tick}</span>
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--win)" }} />
+              <span className="min-w-0 flex-1 truncate">{tx.label}</span>
+              <span className="mono shrink-0 text-[11px] text-purple-bright">{short(tx.hash)}{href && " ↗"}</span>
+            </div>
+          );
+          return href ? <a key={`${tx.hash}-${i}`} href={href} target="_blank" rel="noreferrer">{row}</a> : <div key={`${tx.hash}-${i}`}>{row}</div>;
+        })}
+      </div>
     </div>
   );
 }
@@ -233,10 +325,7 @@ function smoothPath(pts: { x: number; y: number }[]) {
 }
 
 function Chart({ history }: { history: Hist[] }) {
-  const W = 960;
-  const H = 300;
-  const padX = 14;
-  const padY = 22;
+  const W = 960, H = 300, padX = 14, padY = 22;
   if (history.length < 2) {
     return (
       <div className="mt-6 flex h-[260px] items-center justify-center rounded-2xl border text-sm text-muted" style={{ borderColor: "var(--hair)", background: "rgba(0,0,0,0.2)" }}>
@@ -247,29 +336,21 @@ function Chart({ history }: { history: Hist[] }) {
   const pass = history.map((h) => -h.passiveLvr);
   const wick = history.map((h) => -h.wickLvr);
   const all = [...pass, ...wick, 0];
-  let min = Math.min(...all);
-  let max = Math.max(...all);
+  let min = Math.min(...all), max = Math.max(...all);
   const pad = (max - min) * 0.12 || 1;
-  min -= pad;
-  max += pad;
+  min -= pad; max += pad;
   const span = max - min || 1;
   const x = (i: number) => padX + (i / (history.length - 1)) * (W - padX * 2);
   const y = (v: number) => padY + (1 - (v - min) / span) * (H - padY * 2);
   const ptsPass = pass.map((v, i) => ({ x: x(i), y: y(v) }));
   const ptsWick = wick.map((v, i) => ({ x: x(i), y: y(v) }));
-  const linePass = smoothPath(ptsPass);
-  const lineWick = smoothPath(ptsWick);
+  const linePass = smoothPath(ptsPass), lineWick = smoothPath(ptsWick);
   const areaPass = `${linePass} L ${x(pass.length - 1).toFixed(2)} ${y(min).toFixed(2)} L ${x(0).toFixed(2)} ${y(min).toFixed(2)} Z`;
   const areaWick = `${lineWick} L ${x(wick.length - 1).toFixed(2)} ${y(min).toFixed(2)} L ${x(0).toFixed(2)} ${y(min).toFixed(2)} Z`;
   const zeroY = y(0);
-
-  // gridlines
   const ticks = 4;
   const grid = Array.from({ length: ticks + 1 }, (_, i) => min + (span * i) / ticks);
-
-  // shock marker = biggest single-step jump in passive LVR (raw)
-  let shockIdx = -1;
-  let shockMax = 0;
+  let shockIdx = -1, shockMax = 0;
   for (let i = 1; i < history.length; i++) {
     const d = history[i].passiveLvr - history[i - 1].passiveLvr;
     if (d > shockMax) { shockMax = d; shockIdx = i; }
@@ -285,40 +366,27 @@ function Chart({ history }: { history: Hist[] }) {
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full rounded-2xl border" style={{ borderColor: "var(--hair)", background: "linear-gradient(180deg, rgba(0,0,0,0.28), rgba(32,0,82,0.12))" }}>
         <defs>
-          <linearGradient id="winArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--monad-purple)" stopOpacity="0.34" />
-            <stop offset="100%" stopColor="var(--monad-purple)" stopOpacity="0" />
-          </linearGradient>
-          <linearGradient id="lossArea" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--loss)" stopOpacity="0.26" />
-            <stop offset="100%" stopColor="var(--loss)" stopOpacity="0" />
-          </linearGradient>
-          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="3.2" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
+          <linearGradient id="winArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--monad-purple)" stopOpacity="0.34" /><stop offset="100%" stopColor="var(--monad-purple)" stopOpacity="0" /></linearGradient>
+          <linearGradient id="lossArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--loss)" stopOpacity="0.26" /><stop offset="100%" stopColor="var(--loss)" stopOpacity="0" /></linearGradient>
+          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="3.2" result="b" /><feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
-
-        {grid.map((g, i) => (
+        {grid.map((gv, i) => (
           <g key={i}>
-            <line x1={padX} y1={y(g)} x2={W - padX} y2={y(g)} stroke="var(--hair)" strokeWidth={1} />
-            <text x={padX + 2} y={y(g) - 4} fontSize="10" fill="var(--muted)" className="mono">{compact(g)}</text>
+            <line x1={padX} y1={y(gv)} x2={W - padX} y2={y(gv)} stroke="var(--hair)" strokeWidth={1} />
+            <text x={padX + 2} y={y(gv) - 4} fontSize="10" fill="var(--muted)" className="mono">{compact(gv)}</text>
           </g>
         ))}
         <line x1={padX} y1={zeroY} x2={W - padX} y2={zeroY} stroke="rgba(165,148,255,0.35)" strokeWidth={1} strokeDasharray="2 4" />
-
         {showShock && (
           <g>
             <line x1={x(shockIdx)} y1={padY} x2={x(shockIdx)} y2={H - padY} stroke="rgba(255,79,139,0.4)" strokeWidth={1} strokeDasharray="3 4" />
             <text x={x(shockIdx) + 5} y={padY + 10} fontSize="10" fill="var(--loss)">⚡ shock</text>
           </g>
         )}
-
         <path d={areaPass} fill="url(#lossArea)" />
         <path d={areaWick} fill="url(#winArea)" />
         <path d={linePass} fill="none" stroke="var(--loss)" strokeWidth={2.4} filter="url(#glow)" strokeLinecap="round" />
         <path d={lineWick} fill="none" stroke="var(--win)" strokeWidth={2.6} filter="url(#glow)" strokeLinecap="round" />
-
         <circle className="endpoint" cx={x(pass.length - 1)} cy={y(pass[pass.length - 1])} r={5} fill="var(--loss)" filter="url(#glow)" />
         <circle className="endpoint" cx={x(wick.length - 1)} cy={y(wick[wick.length - 1])} r={5} fill="var(--win)" filter="url(#glow)" />
       </svg>
@@ -327,11 +395,7 @@ function Chart({ history }: { history: Hist[] }) {
 }
 
 function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5 text-foreground/70">
-      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 10px ${color}` }} /> {label}
-    </span>
-  );
+  return <span className="flex items-center gap-1.5 text-foreground/70"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: color, boxShadow: `0 0 10px ${color}` }} /> {label}</span>;
 }
 
 function PoolCard({ title, tone, pool, oracle, reprices, shocked }: { title: string; tone: "loss" | "win"; pool?: PoolState; oracle: number; reprices: boolean; shocked: boolean }) {
@@ -341,9 +405,7 @@ function PoolCard({ title, tone, pool, oracle, reprices, shocked }: { title: str
     <div className="glass p-5">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold">{title}</h3>
-        <span className="rounded-full px-2.5 py-1 text-[11px] font-medium" style={{ background: `${color}1f`, color }}>
-          {reprices ? "per-block repricing" : "stale between blocks"}
-        </span>
+        <span className="rounded-full px-2.5 py-1 text-[11px] font-medium" style={{ background: `${color}1f`, color }}>{reprices ? "per-block repricing" : "stale between blocks"}</span>
       </div>
       <div className="hairline my-4 h-px" />
       <dl className="grid grid-cols-2 gap-y-3.5 text-sm">
@@ -361,9 +423,7 @@ function Row({ k, v, tone, note }: { k: string; v: string; tone?: "loss" | "win"
   return (
     <div>
       <dt className="text-[12px] text-muted">{k}</dt>
-      <dd className="mono mt-0.5 font-semibold" style={{ color }}>
-        {v} {note && <span className="ml-1 text-[10px] font-normal text-muted">{note}</span>}
-      </dd>
+      <dd className="mono mt-0.5 font-semibold" style={{ color }}>{v} {note && <span className="ml-1 text-[10px] font-normal text-muted">{note}</span>}</dd>
     </div>
   );
 }
@@ -371,30 +431,21 @@ function Row({ k, v, tone, note }: { k: string; v: string; tone?: "loss" | "win"
 function Footer({ explorerHref }: { explorerHref?: string }) {
   return (
     <>
-      <section className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Why title="Real revenue" body="Market-making spread — the model propAMMs use to capture 35–40% of Solana spot volume. Not a token. Not emissions." />
         <Why title="Only on Monad" body="LVR = staleness window × volatility. 400ms blocks give the shortest window on-chain; parallel execution reprices hundreds of pools at once." />
         <Why title="Open & on-chain" body="Anyone can LP into propAMM-grade returns that today sit behind closed, single-MM dark pools. Same logic as a Uniswap v4 hook." />
       </section>
-      <footer className="mt-7 flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
+      <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 text-xs text-muted">
         <span>WICK · autonomous market maker · built on Monad</span>
-        {explorerHref && (
-          <a href={explorerHref} target="_blank" rel="noreferrer" className="chip px-3 py-1.5 text-purple-bright hover:text-foreground">
-            View WICK contract on MonadScan ↗
-          </a>
-        )}
+        {explorerHref && <a href={explorerHref} target="_blank" rel="noreferrer" className="chip px-3 py-1.5 text-purple-bright hover:text-foreground">View WICK contract on MonadScan ↗</a>}
       </footer>
     </>
   );
 }
 
 function Why({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="glass-soft p-4">
-      <p className="text-sm font-semibold text-purple-bright">{title}</p>
-      <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{body}</p>
-    </div>
-  );
+  return <div className="glass-soft p-4"><p className="text-sm font-semibold text-purple-bright">{title}</p><p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{body}</p></div>;
 }
 
 function MonadBadge({ onMonad, explorerHref }: { onMonad: boolean; explorerHref?: string }) {
@@ -403,9 +454,7 @@ function MonadBadge({ onMonad, explorerHref }: { onMonad: boolean; explorerHref?
       <MonadMark /> <span className="text-foreground/85">{onMonad ? "Monad Testnet" : "local"}</span>
     </span>
   );
-  return onMonad && explorerHref ? (
-    <a href={explorerHref} target="_blank" rel="noreferrer" className="hover:opacity-80">{inner}</a>
-  ) : inner;
+  return onMonad && explorerHref ? <a href={explorerHref} target="_blank" rel="noreferrer" className="hover:opacity-80">{inner}</a> : inner;
 }
 
 function WickMark({ running }: { running: boolean }) {
