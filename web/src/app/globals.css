@@ -10,7 +10,7 @@
   --text: #e7e7ea;
   --muted: #696974;
   --muted-2: #9a9aa6;
-  --accent: #836ef9;   /* Monad purple — brand accent, used sparingly */
+  --accent: #836ef9;   /* Monad purple · brand accent, used sparingly */
   --accent-2: #a594ff;
   --up: #2ebd85;       /* P&L green */
   --down: #f6465d;     /* P&L red */
@@ -47,7 +47,7 @@ body {
   font-feature-settings: "tnum" 1, "zero" 1, "cv01" 1;
 }
 
-/* Flat panels, hairline borders, small radius — no glass, no glow */
+/* Flat panels, hairline borders, small radius · no glass, no glow */
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -66,7 +66,7 @@ body {
   font-weight: 600;
 }
 
-/* Buttons — flat, terminal */
+/* Buttons · flat, terminal */
 .btn {
   border: 1px solid var(--border-2);
   background: var(--panel-2);

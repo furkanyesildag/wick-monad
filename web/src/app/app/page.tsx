@@ -9,7 +9,7 @@ import {
 } from "wagmi";
 import { vaultAbi, MONAD_TESTNET_ID } from "@/lib/wagmi";
 
-const fmt = (wei?: bigint, dp = 4) => (wei === undefined ? "—" : (Number(wei) / 1e18).toLocaleString("en-US", { maximumFractionDigits: dp }));
+const fmt = (wei?: bigint, dp = 4) => (wei === undefined ? " · " : (Number(wei) / 1e18).toLocaleString("en-US", { maximumFractionDigits: dp }));
 const short = (a?: string) => (a ? `${a.slice(0, 6)}…${a.slice(-4)}` : "");
 
 export default function AppPage() {
@@ -85,7 +85,7 @@ export default function AppPage() {
       <main className="mx-auto w-full max-w-[760px] px-5 py-8">
         <div className="mb-5">
           <h1 className="text-[22px] font-bold tracking-tight">Earn with the WICK MON Vault</h1>
-          <p className="mt-1 text-[13px] text-muted">Deposit testnet MON. The AI market maker works your liquidity every block and streams the spread it earns back to you. Single-sided — just MON. Withdraw anytime.</p>
+          <p className="mt-1 text-[13px] text-muted">Deposit testnet MON. The AI market maker works your liquidity every block and streams the spread it earns back to you. Single-sided · just MON. Withdraw anytime.</p>
         </div>
 
         {!isConnected ? (
@@ -94,7 +94,7 @@ export default function AppPage() {
             <button onClick={() => connect({ connector: connectors[0] })} disabled={connecting} className="btn btn-primary mt-4 px-5 py-2.5">
               {connecting ? "Connecting…" : "Connect MetaMask"}
             </button>
-            {!connectors.length && <p className="mt-3 text-[12px] text-muted">No injected wallet found — install MetaMask.</p>}
+            {!connectors.length && <p className="mt-3 text-[12px] text-muted">No injected wallet found · install MetaMask.</p>}
           </div>
         ) : wrongChain ? (
           <div className="panel p-8 text-center">
@@ -135,7 +135,7 @@ export default function AppPage() {
                   <button onClick={deposit} disabled={busy || !amount || Number(amount) <= 0} className="btn btn-primary px-5 py-2.5">{busy ? "…" : "Deposit"}</button>
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-[11.5px] text-muted">
-                  <span>balance {bal.data ? fmt(bal.data.value) : "—"} MON</span>
+                  <span>balance {bal.data ? fmt(bal.data.value) : " · "} MON</span>
                   {bal.data && (
                     <>
                       <button onClick={() => setAmount((Number(formatEther(bal.data!.value)) * 0.25).toFixed(3))} className="rounded border border-border px-1.5 py-0.5 hover:text-foreground">25%</button>

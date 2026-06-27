@@ -112,14 +112,14 @@ export default function Home() {
       <main className="mx-auto w-full max-w-[1200px] px-5 py-6">
         <div className="mb-4 flex items-end justify-between gap-3">
           <div>
-            <h2 className="text-[15px] font-semibold tracking-tight">An AI runs your liquidity like a market maker <span className="text-muted">— repriced every block on Monad</span></h2>
+            <h2 className="text-[15px] font-semibold tracking-tight">An AI runs your liquidity like a market maker <span className="text-muted"> ·  repriced every block on Monad</span></h2>
             <p className="mt-0.5 text-[12.5px] text-muted">Same liquidity, same real MON/USD price action, same trades. The passive pool leaks to bots (LVR); WICK&apos;s AI reprices every block and earns the spread instead.</p>
           </div>
           <button onClick={() => setShowSim((s) => !s)} className="mono shrink-0 rounded border border-border px-2 py-1 text-[10.5px] text-muted hover:text-foreground">{showSim ? "× close" : "ⓘ what is this?"}</button>
         </div>
         {showSim && <SimExplainer />}
 
-        {/* AI BRAIN — the star */}
+        {/* AI BRAIN · the star */}
         <AiBrain ai={state?.ai ?? null} stream={aiLog} running={running} />
 
         {/* CONTROLS */}
@@ -133,8 +133,8 @@ export default function Home() {
           </div>
           <div className="divide-h px-4 pb-4 pt-3">
             <div className="mb-2 flex items-center gap-4">
-              <Legend color="var(--down)" label="Passive — bleeding to arbs" />
-              <Legend color="var(--up)" label="WICK — earning spread" />
+              <Legend color="var(--down)" label="Passive · bleeding to arbs" />
+              <Legend color="var(--up)" label="WICK · earning spread" />
               <span className="label ml-auto hidden sm:block">cumulative LP profit ($) · per block</span>
             </div>
             <Chart history={state?.history ?? []} />
@@ -179,7 +179,7 @@ function TopBar({ monUsd, tick, tps, onMonad, contractHref }: { monUsd: number; 
         <div className="ml-auto flex items-center gap-0 text-[12px]">
           <span className="hidden items-baseline gap-1.5 px-3 md:flex">
             <span className="text-muted">MON/USD</span>
-            <span className="mono text-foreground">{monUsd > 0 ? `$${monUsd.toFixed(5)}` : "—"}</span>
+            <span className="mono text-foreground">{monUsd > 0 ? `$${monUsd.toFixed(5)}` : " · "}</span>
             <span className="text-[10px]" style={{ color: "var(--accent-2)" }}>Pyth</span>
           </span>
           <Sep className="hidden md:block" />
@@ -232,12 +232,12 @@ function AiBrain({ ai, stream, running }: { ai: Ai; stream: LogEntry[]; running:
           </div>
           <div>
             <div className="label">quoting spread</div>
-            <div className="mono text-[30px] font-semibold leading-none" style={{ color: col }}>{ai ? `${spread.toFixed(2)}%` : "—"}</div>
+            <div className="mono text-[30px] font-semibold leading-none" style={{ color: col }}>{ai ? `${spread.toFixed(2)}%` : " · "}</div>
           </div>
         </div>
         <div className="min-w-0">
           <div className="label mb-1">what the AI is deciding</div>
-          <p className="text-[14px] leading-snug text-foreground">{ai ? `“${ai.reasoning}”` : "Run the simulation — the AI reads the live MON/USD price action and sets the spread to protect LPs while winning flow."}</p>
+          <p className="text-[14px] leading-snug text-foreground">{ai ? `“${ai.reasoning}”` : "Run the simulation · the AI reads the live MON/USD price action and sets the spread to protect LPs while winning flow."}</p>
           {stream.length > 1 && (
             <div className="mt-3 space-y-1 border-t border-border/60 pt-2">
               {stream.slice(1).map((e, i) => (
@@ -271,13 +271,13 @@ function MonadThroughput({ throughput, stats }: { throughput?: Throughput; stats
     { k: "live throughput", v: `${tps.toFixed(1)} tx/s`, c: "var(--up)", note: `${throughput?.perBlock ?? 5} txs / block` },
     { k: "txs sent this session", v: total.toLocaleString(), c: "var(--text)", note: "all on-chain, on Monad" },
     { k: "block time", v: "400ms", c: "var(--accent-2)", note: "sub-second finality" },
-    { k: "WICK LP profit", v: stats ? usd(stats.wickLpProfit, true) : "—", c: "var(--up)", note: stats ? `${usd(stats.savedVsPassive, true)} vs passive` : "" },
+    { k: "WICK LP profit", v: stats ? usd(stats.wickLpProfit, true) : " · ", c: "var(--up)", note: stats ? `${usd(stats.savedVsPassive, true)} vs passive` : "" },
   ];
   return (
     <section className="panel mt-3">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2 text-[11px]">
         <span className="label">Monad throughput</span>
-        <span className="ml-auto text-muted">per-block repricing across many pools needs 10,000 TPS &amp; 400ms blocks — only Monad</span>
+        <span className="ml-auto text-muted">per-block repricing across many pools needs 10,000 TPS &amp; 400ms blocks · only Monad</span>
       </div>
       <div className="flex flex-wrap items-stretch">
         {items.map((it, i) => (
@@ -295,7 +295,7 @@ function MonadThroughput({ throughput, stats }: { throughput?: Throughput; stats
 function SimExplainer() {
   return (
     <div className="panel-2 mb-3 p-3.5 text-[12.5px] leading-relaxed text-muted2">
-      <p><span className="text-foreground">Live on Monad testnet — real contracts, real transactions.</span> The price is driven by the <span className="text-foreground">real MON/USD feed from Pyth</span> (replayed & time-compressed so a few hours of market plays out in minutes). A real OpenAI model decides the spread each move and writes its reasoning above.</p>
+      <p><span className="text-foreground">Live on Monad testnet · real contracts, real transactions.</span> The price is driven by the <span className="text-foreground">real MON/USD feed from Pyth</span> (replayed & time-compressed so a few hours of market plays out in minutes). A real OpenAI model decides the spread each move and writes its reasoning above.</p>
       <p className="mt-1.5">The agent pushes the <span className="text-foreground">same</span> arbitrage + retail trades through both pools, so the only variable is WICK&apos;s per-block repricing. Every number is read from chain; every line in the tx feed is a transaction you can open on MonadScan. The shock button simulates a real volatility event.</p>
     </div>
   );
@@ -325,7 +325,7 @@ function AgentConsole({ log, running }: { log: LogEntry[]; running: boolean }) {
         <span className="ml-auto flex items-center gap-1.5 text-[11px] text-muted">{running ? <><span className="blink h-1.5 w-1.5 rounded-full" style={{ background: "var(--up)" }} /> live</> : "what the agent reads & does"}</span>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-2">
-        {log.length === 0 && <p className="mt-14 text-center text-[12.5px] text-muted">Run the simulation — the agent narrates each block here.</p>}
+        {log.length === 0 && <p className="mt-14 text-center text-[12.5px] text-muted">Run the simulation · the agent narrates each block here.</p>}
         <div className="space-y-[3px]">
           {log.map((e, i) => (
             <div key={`${e.tick}-${i}`} className="flex items-center gap-2 text-[12.5px] leading-5">
@@ -351,7 +351,7 @@ function TxFeed({ txs, explorer, tps }: { txs: TxEntry[]; explorer: string | nul
         </span>
       </div>
       <div className="flex-1 overflow-y-auto px-2 py-1.5">
-        {txs.length === 0 && <p className="mt-14 text-center text-[12.5px] text-muted">Every agent action is a real transaction — they stream here.</p>}
+        {txs.length === 0 && <p className="mt-14 text-center text-[12.5px] text-muted">Every agent action is a real transaction · they stream here.</p>}
         {txs.map((tx, i) => {
           const href = explorer ? `${explorer}/tx/${tx.hash}` : undefined;
           const inner = (
@@ -442,11 +442,11 @@ function LpPanel({ lp, trades, amount, setAmount, onDeposit, busy, running }: {
     return (
       <section className="panel mt-3">
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-          <span className="label">earn — provide liquidity</span>
-          <span className="ml-auto text-[11px] text-muted">a real MetaMask deposit page is next — this seeds a demo position</span>
+          <span className="label">earn · provide liquidity</span>
+          <span className="ml-auto text-[11px] text-muted">a real MetaMask deposit page is next · this seeds a demo position</span>
         </div>
         <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
-          <p className="max-w-md text-[12.5px] text-muted2">Put money into the WICK pool and the AI market-makes it every block — you earn the spread it captures instead of bleeding to bots like a passive LP.</p>
+          <p className="max-w-md text-[12.5px] text-muted2">Put money into the WICK pool and the AI market-makes it every block · you earn the spread it captures instead of bleeding to bots like a passive LP.</p>
           <div className="flex items-center gap-2 sm:ml-auto">
             {amounts.map((a) => (
               <button key={a} onClick={() => setAmount(a)} className="btn px-3 py-1.5 text-[12.5px]" style={amount === a ? { borderColor: "var(--accent)", color: "var(--accent-2)", background: "rgba(131,110,249,0.08)" } : undefined}>${a.toLocaleString()}</button>
@@ -527,10 +527,10 @@ function PoolTable({ title, tone, pool, oracle, reprices, shocked }: { title: st
   const color = tone === "up" ? "var(--up)" : "var(--down)";
   const drift = pool ? pool.price - oracle : 0;
   const rows: [string, string, ("down" | "up")?][] = [
-    ["Quoted price", pool ? usd(pool.price) : "—"],
-    ["Drift vs oracle", pool ? usd(drift, true) : "—", Math.abs(drift) > 1 ? "down" : undefined],
-    ["Spread / fee", pool ? `${(pool.spreadBps / 100).toFixed(2)}%` : "—", shocked ? "up" : undefined],
-    ["LP equity", pool ? usd(pool.lpEquity) : "—"],
+    ["Quoted price", pool ? usd(pool.price) : " · "],
+    ["Drift vs oracle", pool ? usd(drift, true) : " · ", Math.abs(drift) > 1 ? "down" : undefined],
+    ["Spread / fee", pool ? `${(pool.spreadBps / 100).toFixed(2)}%` : " · ", shocked ? "up" : undefined],
+    ["LP equity", pool ? usd(pool.lpEquity) : " · "],
   ];
   return (
     <div className="panel">
@@ -554,9 +554,9 @@ function Footer({ contractHref }: { contractHref?: string }) {
   return (
     <footer className="mt-5 border-t border-border pt-4">
       <div className="grid grid-cols-1 gap-x-8 gap-y-2 text-[12px] text-muted sm:grid-cols-3">
-        <p><span className="text-muted2">Real AI.</span> An OpenAI model sets the spread every block from real Pyth price action — not a fixed curve.</p>
+        <p><span className="text-muted2">Real AI.</span> An OpenAI model sets the spread every block from real Pyth price action · not a fixed curve.</p>
         <p><span className="text-muted2">Only on Monad.</span> Per-block repricing across many pools needs 400ms blocks + 10,000 TPS + parallel execution.</p>
-        <p><span className="text-muted2">Real revenue.</span> The market-making spread — how propAMMs capture 35–40% of Solana spot volume. No token, no emissions.</p>
+        <p><span className="text-muted2">Real revenue.</span> The market-making spread · how propAMMs capture 35–40% of Solana spot volume. No token, no emissions.</p>
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-muted">
         <span>WICK · AI market maker · built on Monad</span>

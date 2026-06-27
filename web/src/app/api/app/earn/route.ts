@@ -3,7 +3,7 @@ import { parseEther } from "viem";
 import { account, pub, wallet, ADDR } from "@/lib/contracts";
 
 // Keeper streams a slice of the AI market maker's earnings into the vault, lifting every
-// depositor's price-per-share — so a real MON deposit visibly earns. ~0.4% of assets per call
+// depositor's price-per-share · so a real MON deposit visibly earns. ~0.4% of assets per call
 // ("a day" of market-making), capped, funded by the agent wallet.
 const vaultAbi = [
   { type: "function", name: "totalAssets", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },

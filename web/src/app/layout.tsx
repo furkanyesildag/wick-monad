@@ -6,9 +6,9 @@ const inter = Inter({ variable: "--font-sans", subsets: ["latin"], display: "swa
 const geistMono = Geist_Mono({ variable: "--font-mono", subsets: ["latin"], display: "swap" });
 
 export const metadata: Metadata = {
-  title: "WICK — Autonomous Market Maker on Monad",
+  title: "WICK · Autonomous Market Maker on Monad",
   description:
-    "An autonomous AI market maker on Monad. Anyone can LP. Repriced every block so arbitrageurs can't skim you — watch the LVR counter stop bleeding.",
+    "An autonomous AI market maker on Monad. Anyone can LP. Repriced every block so arbitrageurs can't skim you · watch the LVR counter stop bleeding.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
