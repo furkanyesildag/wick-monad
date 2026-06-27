@@ -48,12 +48,12 @@ All contracts are verified on [MonadScan](https://testnet.monadscan.com) and [Mo
 
 | Contract | Address |
 |----------|---------|
-| `WickPool` (AI propAMM) | [`0xd08b7bf0fF043c7470c30FBB00E4559F8A5B6b29`](https://testnet.monadscan.com/address/0xd08b7bf0fF043c7470c30FBB00E4559F8A5B6b29) |
-| `PassivePool` (baseline) | [`0xB0c97cEBAfDB27f12077839a15c15D4930276740`](https://testnet.monadscan.com/address/0xB0c97cEBAfDB27f12077839a15c15D4930276740) |
+| `WickPool` (AI propAMM) | [`0x4F8e3a2ce8C9CAc45d01763FD607C4F9bD39cBa1`](https://testnet.monadscan.com/address/0x4F8e3a2ce8C9CAc45d01763FD607C4F9bD39cBa1) |
+| `PassivePool` (baseline) | [`0xaC14fB461B0032EeFf142A175e58CAAf946a5Ff8`](https://testnet.monadscan.com/address/0xaC14fB461B0032EeFf142A175e58CAAf946a5Ff8) |
 | `WickVault` (native MON) | [`0xB436556cFE759044dfFce06191B96f147Da30Aff`](https://testnet.monadscan.com/address/0xB436556cFE759044dfFce06191B96f147Da30Aff) |
-| `PriceOracle` | [`0x51ec941db77E7134BE0b03EFDa9E54464eFd4554`](https://testnet.monadscan.com/address/0x51ec941db77E7134BE0b03EFDa9E54464eFd4554) |
-| `WMON` (test token) | [`0xD789047Afb53624f780f328522babA8562B65D71`](https://testnet.monadscan.com/address/0xD789047Afb53624f780f328522babA8562B65D71) |
-| `USDC` (test token) | [`0xf664d0b4310162E3b314E2995dF1C93Ce320db23`](https://testnet.monadscan.com/address/0xf664d0b4310162E3b314E2995dF1C93Ce320db23) |
+| `PriceOracle` | [`0xfd67fD1AD4646665F1a1E8c415890EB2d7B7d07F`](https://testnet.monadscan.com/address/0xfd67fD1AD4646665F1a1E8c415890EB2d7B7d07F) |
+| `WMON` (test token) | [`0xeDAFfd0cB9e686cDD77C997d6258499De0745bCa`](https://testnet.monadscan.com/address/0xeDAFfd0cB9e686cDD77C997d6258499De0745bCa) |
+| `USDC` (test token) | [`0x75AEA8bf0137DD5722D5C22FB48497D09a3Fa4E9`](https://testnet.monadscan.com/address/0x75AEA8bf0137DD5722D5C22FB48497D09a3Fa4E9) |
 
 > `WickHook` (the canonical Uniswap v4 form) lives in [`contracts/src/WickHook.sol`](contracts/src/WickHook.sol) with a passing integration test. The live side-by-side runs on the standalone `WickPool`, which embodies the exact same beforeSwap/afterSwap repricing + dynamic-fee logic, so the demo is fully deterministic.
 

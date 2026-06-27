@@ -115,7 +115,7 @@ export default function Home() {
         <div className="mb-4 flex items-end justify-between gap-3">
           <div>
             <h2 className="text-[15px] font-semibold tracking-tight">An AI runs your liquidity like a market maker <span className="text-muted"> ·  repriced every block on Monad</span></h2>
-            <p className="mt-0.5 text-[12.5px] text-muted">Same liquidity, same real MON/USD price action, same trades. The passive pool leaks to bots (LVR); WICK&apos;s AI reprices every block and earns the spread instead.</p>
+            <p className="mt-0.5 text-[12.5px] text-muted">Identical liquidity on the real MON/USD price. Arbitrage bots pick off the stale passive pool (LVR); benign flow routes to WICK&apos;s fresh, tighter quote, so it reprices every block and earns the spread instead.</p>
           </div>
           <button onClick={() => setShowSim((s) => !s)} className="mono shrink-0 rounded border border-border px-2 py-1 text-[10.5px] text-muted hover:text-foreground">{showSim ? "× close" : "ⓘ what is this?"}</button>
         </div>
@@ -301,7 +301,7 @@ function SimExplainer() {
   return (
     <div className="panel-2 mb-3 p-3.5 text-[12.5px] leading-relaxed text-muted2">
       <p><span className="text-foreground">Live on Monad testnet · real contracts, real transactions.</span> The price is driven by the <span className="text-foreground">real MON/USD feed from Pyth</span> (replayed & time-compressed so a few hours of market plays out in minutes). A real OpenClaw agent 🦀 decides the spread each move and writes its reasoning above.</p>
-      <p className="mt-1.5">The agent pushes the <span className="text-foreground">same</span> arbitrage + retail trades through both pools, so the only variable is WICK&apos;s per-block repricing. Every number is read from chain; every line in the tx feed is a transaction you can open on MonadScan. The shock button simulates a real volatility event.</p>
+      <p className="mt-1.5">The agent runs realistic flow: arbitrageurs hit the stale passive pool (extracting LVR), while benign retail routes to WICK&apos;s fresh, tighter quote. The only structural difference is WICK&apos;s per-block repricing. Every number is read from chain; every line in the tx feed is a transaction you can open on MonadScan. The shock button simulates a real volatility event.</p>
     </div>
   );
 }

@@ -3,9 +3,8 @@ import { account, pub, wallet, ADDR, WAD, oracleAbi, poolAbi, wickAbi, erc20Abi 
 import { getLiveMonUsd, getRealSeries } from "./pyth";
 import { getAiPolicy, aiEnabled, type AiPolicy } from "./ai";
 
-// Real MON/USD moves a few % over hours; amplify modestly so the genuine path is watchable
-// in minutes while staying realistic (calm most of the time, with occasional real spikes).
-const PRICE_AMPLIFY = 12;
+// Real MON/USD moves a few % over hours; amplify so the genuine path is watchable in minutes.
+const PRICE_AMPLIFY = 16;
 
 // ----------------------------------------------------------------------------
 // Singleton sim state (survives dev HMR via globalThis).
@@ -147,15 +146,16 @@ async function arbPassive(bag: `0x${string}`[], blk: number, P: bigint) {
   else if (targetRb > Rb) await swap(bag, blk, "arb → passive", ADDR.passive, true, targetRb - Rb);
 }
 
+// Benign retail flow routes to the better quote. WICK is repriced and tighter, so benign
+// traders go there (and pay its spread); only arbitrageurs bother with the stale passive
+// pool. So passive bleeds pure LVR, WICK earns pure spread — the divergence is structural.
 async function retail(bag: `0x${string}`[], blk: number, seed: number, price: bigint) {
   const sellBase = seed % 2 === 0;
-  const sizeBase = (1n + BigInt(seed % 4)) * WAD; // 1 - 4 WMON of retail flow per pool
+  const sizeBase = (1n + BigInt(seed % 4)) * WAD; // 1 - 4 WMON of retail flow
   if (sellBase) {
-    await swap(bag, blk, "retail → passive", ADDR.passive, true, sizeBase);
     await swap(bag, blk, "retail → WICK", ADDR.wick, true, sizeBase);
   } else {
     const sizeQuote = (sizeBase * price) / WAD;
-    await swap(bag, blk, "retail → passive", ADDR.passive, false, sizeQuote);
     await swap(bag, blk, "retail → WICK", ADDR.wick, false, sizeQuote);
   }
 }
@@ -311,7 +311,7 @@ export async function readState() {
     tick: sim.tick,
     monUsd: sim.liveMonUsd,
     ai: sim.aiPolicy,
-    throughput: { total: sim.txTotal, perSec: recentTx / 2, perBlock: 5 },
+    throughput: { total: sim.txTotal, perSec: recentTx / 2, perBlock: 4 },
     oraclePrice: oc.oraclePrice,
     passive: oc.passive,
     wick: oc.wick,
