@@ -1,0 +1,15 @@
+node_modules/
+/contracts/lib/
+.agents/
+.env
+.env.*
+**/.env.local
+**/.env*.local
+out/
+cache/
+broadcast/
+*.log
+.next/
+web/.next/
+web/node_modules/
+.DS_Store
