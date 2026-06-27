@@ -36,6 +36,8 @@ type Sim = {
   liveMonUsd: number; // latest real MON/USD spot (for the ticker)
   aiPolicy: AiPolicy | null; // latest spread/regime decision from the AI
   aiBusy: boolean;
+  txTotal: number; // total on-chain txs sent (throughput showcase)
+  txTimes: number[]; // recent tx timestamps -> live tx/s
 };
 
 const g = globalThis as unknown as { __wickSim?: Sim };
@@ -44,7 +46,7 @@ export const sim: Sim =
   (g.__wickSim = {
     tick: 0, shockQueued: false, approvalsDone: false, busy: false, trades: 0,
     history: [], log: [], txs: [], lpActive: false, lpShares: 0n, lpCost: 0, lpDepositTick: 0, lpJoinWickLvr: 0, lpHistory: [],
-    realSeries: [], realIdx: 0, liveMonUsd: 0, aiPolicy: null, aiBusy: false,
+    realSeries: [], realIdx: 0, liveMonUsd: 0, aiPolicy: null, aiBusy: false, txTotal: 0, txTimes: [],
   });
 // Backfill fields if an older-shaped singleton persisted across an HMR reload.
 sim.log ??= [];
@@ -61,6 +63,8 @@ sim.realIdx ??= 0;
 sim.liveMonUsd ??= 0;
 sim.aiPolicy ??= null;
 sim.aiBusy ??= false;
+sim.txTotal ??= 0;
+sim.txTimes ??= [];
 
 const toNum = (x: bigint, dec = 18) => Number(x) / 10 ** dec;
 const fmtUsd = (n: number) => `$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
@@ -95,6 +99,9 @@ async function submit(blk: number, label: string, args: Parameters<typeof wallet
   nonceCounter = nonce + 1;
   sim.txs.unshift({ tick: blk, label, hash });
   if (sim.txs.length > 28) sim.txs.pop();
+  sim.txTotal += 1;
+  sim.txTimes.push(Date.now());
+  if (sim.txTimes.length > 80) sim.txTimes.shift();
   return hash;
 }
 
@@ -202,7 +209,7 @@ export async function runTick() {
       for (let i = Math.max(1, h.length - 5); i < h.length; i++) rr.push((h[i].price / h[i - 1].price - 1) * 100);
       rr.push(pct);
       getAiPolicy({ priceChangePct: pct, recentReturnsPct: rr, volPct: Number(volBps) / 100, shock: shocked })
-        .then((p) => { if (p) { sim.aiPolicy = p; note(sim.tick, "AI", p.reasoning, p.regime === "calm" ? "win" : "loss"); } })
+        .then((p) => { if (p) { sim.aiPolicy = p; note(sim.tick, "AI", `[${p.regime} · ${(p.spreadBps / 100).toFixed(2)}%] ${p.reasoning}`, p.regime === "calm" ? "win" : "loss"); } })
         .finally(() => { sim.aiBusy = false; });
     }
 
@@ -298,10 +305,13 @@ export async function readState() {
     oc = lastOnChain;
   }
 
+  const now = Date.now();
+  const recentTx = sim.txTimes.filter((t) => now - t < 2000).length;
   return {
     tick: sim.tick,
     monUsd: sim.liveMonUsd,
     ai: sim.aiPolicy,
+    throughput: { total: sim.txTotal, perSec: recentTx / 2, perBlock: 5 },
     oraclePrice: oc.oraclePrice,
     passive: oc.passive,
     wick: oc.wick,

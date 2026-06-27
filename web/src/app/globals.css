@@ -14,6 +14,7 @@
   --accent-2: #a594ff;
   --up: #2ebd85;       /* P&L green */
   --down: #f6465d;     /* P&L red */
+  --warn: #f5a524;     /* volatile / amber */
 }
 
 @theme inline {
