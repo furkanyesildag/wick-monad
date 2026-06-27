@@ -150,7 +150,7 @@ export default function AppPage() {
             {busyMsg && <p className="mt-3 text-center text-[13px]" style={{ color: "var(--accent-2)" }}>{busyMsg}</p>}
 
             <p className="mt-5 text-center text-[11.5px] text-muted">Testnet only. Real native MON, real contract, your signature. The vault is single-sided; the AI strategy&apos;s earnings are streamed in by the keeper. See the live engine on the{" "}
-              <Link href="/" className="underline hover:text-foreground">dashboard ↗</Link>.</p>
+              <Link href="/live" className="underline hover:text-foreground">live dashboard ↗</Link>.</p>
           </>
         )}
       </main>
@@ -169,7 +169,7 @@ function Nav({ address, isConnected, onDisconnect }: { address?: string; isConne
           <span className="text-[15px] font-bold tracking-tight">WICK</span>
         </Link>
         <nav className="ml-3 flex items-center gap-3 text-[12.5px] text-muted">
-          <Link href="/" className="hover:text-foreground">Dashboard</Link>
+          <Link href="/live" className="hover:text-foreground">Live</Link>
           <span className="text-foreground">Earn</span>
         </nav>
         <div className="ml-auto flex items-center gap-2 text-[12px]">
