@@ -27,10 +27,18 @@ export const chain = defineChain({
   name: deployment.chainId === 10143 ? "Monad Testnet" : "Local",
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
   rpcUrls: { default: { http: [RPC] } },
+  // Multicall3 is canonical on Monad — lets viem collapse concurrent reads into one
+  // RPC request, which keeps us under the public RPC's 15 req/s limit.
+  contracts: { multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" } },
 });
 
 export const account = privateKeyToAccount(PK);
-export const pub = createPublicClient({ chain, transport: http(RPC) });
+export const pub = createPublicClient({
+  chain,
+  transport: http(RPC),
+  batch: { multicall: { wait: 16 } },
+  pollingInterval: 300,
+});
 export const wallet = createWalletClient({ account, chain, transport: http(RPC) });
 
 export const ADDR = {

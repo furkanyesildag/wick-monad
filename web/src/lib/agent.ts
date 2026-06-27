@@ -8,6 +8,8 @@ export type HistPoint = { tick: number; price: number; passiveLvr: number; wickL
 export type LogEntry = { tick: number; tag: string; text: string; tone: "info" | "loss" | "win" | "muted" };
 export type TxEntry = { tick: number; label: string; hash: string };
 
+export type LpPoint = { tick: number; value: number; earned: number };
+
 type Sim = {
   tick: number;
   shockQueued: boolean;
@@ -20,6 +22,9 @@ type Sim = {
   lpActive: boolean;
   lpShares: bigint;
   lpCost: number;
+  lpDepositTick: number;
+  lpJoinWickLvr: number; // WICK lpMarkout at the moment the user joined
+  lpHistory: LpPoint[];
 };
 
 const g = globalThis as unknown as { __wickSim?: Sim };
@@ -27,7 +32,7 @@ export const sim: Sim =
   g.__wickSim ??
   (g.__wickSim = {
     tick: 0, shockQueued: false, approvalsDone: false, busy: false, trades: 0,
-    history: [], log: [], txs: [], lpActive: false, lpShares: 0n, lpCost: 0,
+    history: [], log: [], txs: [], lpActive: false, lpShares: 0n, lpCost: 0, lpDepositTick: 0, lpJoinWickLvr: 0, lpHistory: [],
   });
 // Backfill fields if an older-shaped singleton persisted across an HMR reload.
 sim.log ??= [];
@@ -36,6 +41,9 @@ sim.trades ??= 0;
 sim.lpActive ??= false;
 sim.lpShares ??= 0n;
 sim.lpCost ??= 0;
+sim.lpDepositTick ??= 0;
+sim.lpJoinWickLvr ??= 0;
+sim.lpHistory ??= [];
 
 const toNum = (x: bigint, dec = 18) => Number(x) / 10 ** dec;
 const fmtUsd = (n: number) => `$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
@@ -117,7 +125,7 @@ async function arbPassive(bag: `0x${string}`[], blk: number, P: bigint) {
 
 async function retail(bag: `0x${string}`[], blk: number, seed: number, price: bigint) {
   const sellBase = seed % 2 === 0;
-  const sizeBase = (2n + BigInt(seed % 5)) * (WAD / 10n); // 0.2 - 0.6 WMON
+  const sizeBase = (1n + BigInt(seed % 4)) * WAD; // 1 - 4 WMON of retail flow per pool
   if (sellBase) {
     await swap(bag, blk, "retail → passive", ADDR.passive, true, sizeBase);
     await swap(bag, blk, "retail → WICK", ADDR.wick, true, sizeBase);
@@ -162,14 +170,17 @@ export async function runTick() {
     if (newPrice !== prev) await arbPassive(bag, blk, newPrice);
     await retail(bag, blk, sim.tick, newPrice);
 
-    // Batch-wait: all of this block's txs confirm together (snappy on Monad).
-    await Promise.all(bag.map((hash) => pub.waitForTransactionReceipt({ hash })));
+    // Txs share one sender in nonce order, so waiting on the last confirms them all —
+    // one receipt poll instead of ~5 (keeps us under the RPC's request limit).
+    if (bag.length) await pub.waitForTransactionReceipt({ hash: bag[bag.length - 1] });
 
     sim.tick += 1;
 
-    const [pLvr, wLvr] = await Promise.all([
+    const [pLvr, wLvr, wTotal, wEq] = await Promise.all([
       pub.readContract({ address: ADDR.passive, abi: poolAbi, functionName: "lpMarkout" }) as Promise<bigint>,
       pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "lpMarkout" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "totalShares" }) as Promise<bigint>,
+      pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "lpEquityQuote" }) as Promise<bigint>,
     ]);
     const pNow = toNum(pLvr), wNow = toNum(wLvr);
     const dPassive = pNow - prevP; // >0 = passive LP lost this block
@@ -179,6 +190,15 @@ export async function runTick() {
 
     sim.history.push({ tick: sim.tick, price: toNum(newPrice), passiveLvr: pNow, wickLvr: wNow });
     if (sim.history.length > 80) sim.history.shift();
+
+    // Track the user's value + spread earned over time so the dashboard shows it grow.
+    if (sim.lpActive && sim.lpShares > 0n && wTotal > 0n) {
+      const frac = Number(sim.lpShares) / Number(wTotal);
+      const value = frac * toNum(wEq);
+      const earned = frac * (sim.lpJoinWickLvr - wNow); // user's share of pool spread since join
+      sim.lpHistory.push({ tick: sim.tick, value, earned });
+      if (sim.lpHistory.length > 80) sim.lpHistory.shift();
+    }
   } finally {
     sim.busy = false;
   }
@@ -199,10 +219,17 @@ export async function readState() {
   ]);
 
   const wickEquity = toNum(wEq);
-  let yourLp = null as null | { value: number; cost: number; pnl: number };
+  let yourLp = null as null | { value: number; cost: number; earned: number; returnPct: number; sinceBlock: number; history: LpPoint[] };
   if (sim.lpActive && sim.lpShares > 0n && wTotal > 0n) {
-    const value = (Number(sim.lpShares) / Number(wTotal)) * wickEquity;
-    yourLp = { value, cost: sim.lpCost, pnl: value - sim.lpCost };
+    const frac = Number(sim.lpShares) / Number(wTotal);
+    const value = frac * wickEquity;
+    const earned = frac * (sim.lpJoinWickLvr - toNum(wLvr)); // share of pool spread since join
+    yourLp = {
+      value, cost: sim.lpCost, earned,
+      returnPct: sim.lpCost > 0 ? (earned / sim.lpCost) * 100 : 0,
+      sinceBlock: sim.lpDepositTick,
+      history: sim.lpHistory,
+    };
   }
   void wShares;
 
@@ -226,27 +253,45 @@ export async function readState() {
   };
 }
 
-export async function becomeLP(): Promise<{ ok: boolean }> {
+export async function becomeLP(amountUsd: number): Promise<{ ok: boolean }> {
   const blk = sim.tick;
   await syncNonce();
   await ensureApprovals(blk);
-  const baseAmt = 20n * WAD; // 20 WMON
+
   const [price, Rb, Rq, sharesBefore] = await Promise.all([
     pub.readContract({ address: ADDR.oracle, abi: oracleAbi, functionName: "price" }) as Promise<bigint>,
     pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "reserveBase" }) as Promise<bigint>,
     pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "reserveQuote" }) as Promise<bigint>,
     pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "shares", args: [account.address] }) as Promise<bigint>,
   ]);
+  // amountUsd is the total position value at the oracle mid. Size the deposit in the
+  // pool's current ratio so the booked cost equals exactly what the user picked:
+  //   value = quoteAmt + baseAmt·price = baseAmt·(ratio + price)  =>  baseAmt = amount/(ratio+price)
+  const amountWad = BigInt(Math.max(1, Math.round(amountUsd))) * WAD;
+  const ratio = (Rq * WAD) / Rb; // quote per base, 1e18
+  const baseAmt = (amountWad * WAD) / (ratio + price);
   const quoteAmt = (baseAmt * Rq) / Rb;
+
   await sendTx(blk, "mint WMON", { address: ADDR.wmon, abi: erc20Abi, functionName: "mint", args: [account.address, baseAmt], account, chain: undefined });
   await sendTx(blk, "mint USDC", { address: ADDR.usdc, abi: erc20Abi, functionName: "mint", args: [account.address, quoteAmt], account, chain: undefined });
   await sendTx(blk, "deposit → WICK", { address: ADDR.wick, abi: poolAbi, functionName: "addLiquidity", args: [baseAmt, quoteAmt], account, chain: undefined });
 
-  const sharesAfter = (await pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "shares", args: [account.address] })) as bigint;
-  sim.lpShares = sharesAfter - sharesBefore;
-  sim.lpCost = toNum(quoteAmt) + (toNum(baseAmt) * toNum(price));
+  const [sharesAfter, totalAfter, eqAfter, wLvrNow] = await Promise.all([
+    pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "shares", args: [account.address] }) as Promise<bigint>,
+    pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "totalShares" }) as Promise<bigint>,
+    pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "lpEquityQuote" }) as Promise<bigint>,
+    pub.readContract({ address: ADDR.wick, abi: poolAbi, functionName: "lpMarkout" }) as Promise<bigint>,
+  ]);
+
+  const firstTime = !sim.lpActive;
+  if (firstTime) { sim.lpDepositTick = sim.tick; sim.lpHistory = []; sim.lpShares = 0n; sim.lpCost = 0; sim.lpJoinWickLvr = toNum(wLvrNow); }
+  sim.lpShares += sharesAfter - sharesBefore;
+  sim.lpCost += toNum(quoteAmt) + toNum(baseAmt) * toNum(price);
   sim.lpActive = true;
-  note(blk, "LP", `you deposited ${fmtUsd(sim.lpCost)} — now earning the spread`, "win");
+
+  const value = totalAfter > 0n ? (Number(sim.lpShares) / Number(totalAfter)) * toNum(eqAfter) : sim.lpCost;
+  sim.lpHistory.push({ tick: sim.tick, value, earned: 0 });
+  note(blk, "LP", `you deposited ${fmtUsd(toNum(quoteAmt) + toNum(baseAmt) * toNum(price))} — now earning the spread`, "win");
   return { ok: true };
 }
 

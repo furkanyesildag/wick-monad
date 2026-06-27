@@ -6,7 +6,8 @@ type PoolState = { price: number; spreadBps: number; lpMarkout: number; lpEquity
 type Hist = { tick: number; price: number; passiveLvr: number; wickLvr: number };
 type LogEntry = { tick: number; tag: string; text: string; tone: "info" | "loss" | "win" | "muted" };
 type TxEntry = { tick: number; label: string; hash: string };
-type YourLp = { value: number; cost: number; pnl: number } | null;
+type LpPoint = { tick: number; value: number; earned: number };
+type YourLp = { value: number; cost: number; earned: number; returnPct: number; sinceBlock: number; history: LpPoint[] } | null;
 type Stats = { blocks: number; trades: number; wickLpProfit: number; savedVsPassive: number };
 type State = {
   tick: number; oraclePrice: number; passive: PoolState; wick: PoolState;
@@ -60,6 +61,8 @@ export default function Home() {
   const [info, setInfo] = useState<Info | null>(null);
   const [running, setRunning] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [lpAmount, setLpAmount] = useState(25000);
+  const [showSim, setShowSim] = useState(false);
   const runningRef = useRef(false);
 
   const pull = useCallback(async () => {
@@ -90,7 +93,12 @@ export default function Home() {
   const toggleRun = () => { const n = !running; setRunning(n); runningRef.current = n; if (n) loop(); };
   const step = async () => { setBusy(true); const r = await fetch("/api/tick", { method: "POST", cache: "no-store" }); if (r.ok) setState(await r.json()); setBusy(false); };
   const shock = async () => { await fetch("/api/shock", { method: "POST" }); if (!running) step(); };
-  const becomeLP = async () => { setBusy(true); await fetch("/api/lp", { method: "POST" }); await pull(); setBusy(false); };
+  const becomeLP = async (amountUsd: number) => {
+    setBusy(true);
+    await fetch("/api/lp", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ amountUsd }) });
+    await pull();
+    setBusy(false);
+  };
 
   const passivePnl = state ? -state.passive.lpMarkout : 0;
   const wickPnl = state ? -state.wick.lpMarkout : 0;
@@ -105,8 +113,17 @@ export default function Home() {
 
       <main className="mx-auto w-full max-w-[1180px] px-5 py-6">
         <div className="mb-4">
-          <h2 className="text-[15px] font-semibold tracking-tight">LP profit from order flow <span className="text-muted">— vs simply holding</span></h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-[15px] font-semibold tracking-tight">LP profit from order flow <span className="text-muted">— vs simply holding</span></h2>
+            <button onClick={() => setShowSim((s) => !s)} className="mono rounded border border-border px-1.5 py-0.5 text-[10px] text-muted hover:text-foreground">{showSim ? "× close" : "ⓘ what is this?"}</button>
+          </div>
           <p className="mt-0.5 text-[12.5px] text-muted">Two pools, identical liquidity, identical trades. The passive pool leaks to arbitrage bots (LVR); WICK is repriced every block, so it earns the spread instead.</p>
+          {showSim && (
+            <div className="panel-2 mt-2.5 p-3.5 text-[12.5px] leading-relaxed text-muted2">
+              <p><span className="text-foreground">This is live on Monad testnet — real contracts, real transactions.</span> To show in two minutes what takes days on mainnet, our agent plays a price feed and pushes the <span className="text-foreground">same</span> arbitrage + retail trades through <span className="text-foreground">both</span> pools, so the only variable is WICK&apos;s per-block repricing.</p>
+              <p className="mt-1.5">In production the price comes from a live oracle (Pyth/Chainlink) and the trades from real users — the pool contracts and the LVR accounting are identical. Every number here is read straight from the chain; every action in the feed is a transaction you can open on MonadScan.</p>
+            </div>
+          )}
         </div>
 
         {/* P&L + CHART */}
@@ -130,9 +147,10 @@ export default function Home() {
           <button onClick={toggleRun} className={`btn px-4 py-2 ${running ? "" : "btn-primary"}`}>{running ? "■ Pause" : "▶ Run simulation"}</button>
           <button onClick={step} disabled={running || busy} className="btn px-3.5 py-2">Step block</button>
           <button onClick={shock} disabled={busy} className="btn btn-danger px-3.5 py-2">⚡ Volatility shock</button>
-          <div className="flex-1" />
-          {state?.yourLp ? <YourPosition lp={state.yourLp} /> : <button onClick={becomeLP} disabled={busy} className="btn px-4 py-2" style={{ borderColor: "var(--accent)", color: "var(--accent-2)" }}>+ Provide liquidity</button>}
         </section>
+
+        {/* YOUR MONEY */}
+        <LpPanel lp={state?.yourLp ?? null} trades={state?.stats?.trades ?? 0} amount={lpAmount} setAmount={setLpAmount} onDeposit={becomeLP} busy={busy} running={running} />
 
         {/* BLOTTERS */}
         <section className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -208,15 +226,98 @@ function PnlCell({ label, sub, value, tone, caption, running }: { label: string;
   );
 }
 
-function YourPosition({ lp }: { lp: NonNullable<YourLp> }) {
+function LpPanel({ lp, trades, amount, setAmount, onDeposit, busy, running }: {
+  lp: YourLp; trades: number; amount: number; setAmount: (n: number) => void; onDeposit: (n: number) => void; busy: boolean; running: boolean;
+}) {
+  if (!lp) {
+    const amounts = [5000, 25000, 100000];
+    return (
+      <section className="panel mt-3">
+        <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+          <span className="label">provide liquidity</span>
+          <span className="ml-auto text-[11px] text-muted">put money in · earn the spread</span>
+        </div>
+        <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center">
+          <p className="max-w-md text-[12.5px] text-muted2">Deposit into the WICK pool. The AI market-makes your money every block on Monad — you earn the spread it captures, instead of bleeding to bots like a passive LP.</p>
+          <div className="flex items-center gap-2 sm:ml-auto">
+            {amounts.map((a) => (
+              <button key={a} onClick={() => setAmount(a)} className="btn px-3 py-1.5 text-[12.5px]" style={amount === a ? { borderColor: "var(--accent)", color: "var(--accent-2)", background: "rgba(131,110,249,0.08)" } : undefined}>${a.toLocaleString()}</button>
+            ))}
+            <button onClick={() => onDeposit(amount)} disabled={busy} className="btn btn-primary px-4 py-1.5 text-[12.5px]">{busy ? "Depositing…" : `Deposit $${amount.toLocaleString()} →`}</button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+  return <LivePosition lp={lp} trades={trades} amount={amount} setAmount={setAmount} onDeposit={onDeposit} busy={busy} running={running} />;
+}
+
+function LivePosition({ lp, trades, amount, setAmount, onDeposit, busy, running }: {
+  lp: NonNullable<YourLp>; trades: number; amount: number; setAmount: (n: number) => void; onDeposit: (n: number) => void; busy: boolean; running: boolean;
+}) {
+  const earned = useCountUp(lp.earned);
   const value = useCountUp(lp.value);
-  const up = lp.pnl >= 0;
+  void amount;
   return (
-    <div className="panel-2 flex items-center gap-2.5 px-3.5 py-2 text-[12.5px]">
-      <span className="text-muted">your LP position</span>
-      <span className="mono font-semibold">{usd(value)}</span>
-      <span className="mono" style={{ color: up ? "var(--up)" : "var(--down)" }}>{up ? "▲" : "▼"} {usd(lp.pnl, true)}</span>
+    <section className="panel mt-3">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <span className="label">your position</span>
+        <span className="ml-auto flex items-center gap-1.5 text-[11px]" style={{ color: running ? "var(--up)" : "var(--muted)" }}>
+          {running && <span className="blink h-1.5 w-1.5 rounded-full" style={{ background: "var(--up)" }} />}{running ? "earning live" : `since block ${lp.sinceBlock}`}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[1fr_320px]">
+        <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+          <div>
+            <div className="label">spread earned</div>
+            <div className="mono text-[34px] font-semibold leading-none" style={{ color: "var(--up)" }}>{usd(earned, true)}</div>
+          </div>
+          <Field k="position value" v={usd(value)} />
+          <Field k="deposited" v={usd(lp.cost)} />
+          <Field k="return" v={`+${Math.abs(lp.returnPct).toFixed(3)}%`} color="var(--up)" />
+          <div className="w-full text-[11.5px] text-muted">your share of the spread WICK captured from {trades.toLocaleString()} trades · no LVR, unlike a passive LP · withdraw anytime
+            <span className="ml-2 inline-flex items-center gap-1.5">
+              {[5000, 25000].map((a) => <button key={a} onClick={() => { setAmount(a); onDeposit(a); }} disabled={busy} className="btn px-2 py-0.5 text-[11px]">+ ${a.toLocaleString()}</button>)}
+            </span>
+          </div>
+        </div>
+        <div className="panel-2 p-2">
+          <div className="label px-1 pb-1">spread earned over time</div>
+          <LpSparkline history={lp.history} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function Field({ k, v, color }: { k: string; v: string; color?: string }) {
+  return (
+    <div>
+      <div className="label">{k}</div>
+      <div className="mono mt-1 text-[18px] font-semibold" style={{ color: color ?? "var(--text)" }}>{v}</div>
     </div>
+  );
+}
+
+function LpSparkline({ history }: { history: LpPoint[] }) {
+  const W = 320, H = 96, p = 6;
+  if (history.length < 2) return <div className="flex h-[96px] items-center justify-center text-[11.5px] text-muted">run the simulation to watch it grow</div>;
+  const vals = history.map((h) => h.earned);
+  const lo = Math.min(...vals, 0), hi = Math.max(...vals, 0);
+  const span = hi - lo || 1;
+  const x = (i: number) => p + (i / (history.length - 1)) * (W - p * 2);
+  const y = (v: number) => p + (1 - (v - lo) / span) * (H - p * 2);
+  const line = smoothPath(history.map((h, i) => ({ x: x(i), y: y(h.earned) })));
+  const area = `${line} L ${x(history.length - 1).toFixed(2)} ${y(lo).toFixed(2)} L ${x(0).toFixed(2)} ${y(lo).toFixed(2)} Z`;
+  const col = "var(--up)";
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <defs><linearGradient id="lpA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={col} stopOpacity="0.18" /><stop offset="100%" stopColor={col} stopOpacity="0" /></linearGradient></defs>
+      <line x1={p} y1={y(0)} x2={W - p} y2={y(0)} stroke="var(--border-2)" strokeWidth={1} strokeDasharray="2 3" />
+      <path d={area} fill="url(#lpA)" />
+      <path d={line} fill="none" stroke={col} strokeWidth={1.8} strokeLinecap="round" />
+      <circle cx={x(history.length - 1)} cy={y(history[history.length - 1].earned)} r={3} fill={col} />
+    </svg>
   );
 }
 
