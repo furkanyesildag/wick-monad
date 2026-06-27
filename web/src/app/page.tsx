@@ -255,7 +255,7 @@ export default function Landing() {
   );
 }
 
-function Nav({ t, lang, setLang }: { t: typeof COPY["en"]; lang: Lang; setLang: (l: Lang) => void }) {
+function Nav({ t, lang, setLang }: { t: (typeof COPY)[Lang]; lang: Lang; setLang: (l: Lang) => void }) {
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-[#08080a]/85 backdrop-blur-sm">
       <div className="mx-auto flex h-[52px] max-w-[1100px] items-center gap-3 px-5">

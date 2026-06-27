@@ -1,8 +1,7 @@
 import "server-only";
-import fs from "fs";
-import path from "path";
 import { createPublicClient, createWalletClient, http, defineChain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import deploymentJson from "./deployment.json";
 
 const RPC = process.env.RPC_URL || "http://localhost:8545";
 const PK = (process.env.AGENT_PK ||
@@ -20,8 +19,7 @@ type Deployment = {
   startPrice: string;
 };
 
-const deployPath = path.join(process.cwd(), "..", "contracts", "deployments", "monad-testnet.json");
-export const deployment: Deployment = JSON.parse(fs.readFileSync(deployPath, "utf8"));
+export const deployment = deploymentJson as Deployment;
 
 export const chain = defineChain({
   id: Number(deployment.chainId),
