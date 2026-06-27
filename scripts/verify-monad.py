@@ -21,6 +21,7 @@ TARGETS = [
      "constructor(address,address,address,uint256)", [dep["wmon"], dep["usdc"], dep["oracle"], "30"]),
     ("WickPool", "src/WickPool.sol:WickPool", dep["wick"],
      "constructor(address,address,address,uint256,uint256)", [dep["wmon"], dep["usdc"], dep["oracle"], "5", "500"]),
+    ("WickVault", "src/WickVault.sol:WickVault", dep["vault"], "constructor()", []),
 ]
 
 
